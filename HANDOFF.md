@@ -7,7 +7,7 @@ Started 25 Oct 2026, overnight. Dan is asleep and asked that the next session is
 Brick Township, NJ, rebuilt as a game from real data: OpenStreetMap (every road with its lanes, speed limits, one-ways,
 turn restrictions, signals and stop signs; every building footprint; land use, water, parks, fences, power lines,
 addresses) plus USGS 3DEP elevation. You ride Dan's Segway Ninebot E2 Pro (real power, drag, battery and kick-to-start
-model), walk, go into his house at 172 Taft Ave (mirror = outfit changer), and work an OGP shift at Walmart #1977
+model), walk, go into his house (his address lives only in local/home.json; mirror = outfit changer), and work an OGP shift at Walmart #1977
 (1872 Route 88) on the work phone.
 
 Look: stylized, slightly blocky, flat-shaded, warm palette ("claudish"), but true to the real place: footprints,
@@ -16,7 +16,7 @@ heights, roads, lanes and signs come from the data, never invented where data ex
 ## Where things are
 - Repo: `hinermandanny-dev/brick-sim` (public; created 25 Oct). Pages: https://hinermandanny-dev.github.io/brick-sim/
 - Dan's copy: `C:\Users\hiner\Downloads\Projects\brick-sim` (Syncthing'd). Double-click `PLAY.cmd` (needs Node, which he has).
-- `local/home.json` (git-ignored, never pushed): `{"addr":"172 Taft Ave"}`. The public site has no home in it; you can
+- `local/home.json` (git-ignored, never pushed): `{"addr":"<his street address>"}`. The public site has no home in it; you can
   set one in game with **B**. Do not put the address anywhere public (repo, Actions logs, Pages).
 - Branch `data`: raw inputs, written by `.github/workflows/fetch-pbf.yml`: the Geofabrik New Jersey extract (164 MB .pbf)
   cut to the box with pyosmium (`tools/fetch_pbf.py`), USGS 3DEP elevation (`tools/fetch.py --dem-only`, 4000 px grid,
@@ -53,7 +53,7 @@ heights, roads, lanes and signs come from the data, never invented where data ex
 - Live on Pages with real Brick: 20,784 road edges, 560 turn restrictions, 56,468 buildings, 64,206 addresses, 917 named
   places, 1,079 bus-route ways, 242k trees; `tools/check.mjs` green (it fails if BMHS, BTHS, VMMS, Lake Riviera MS,
   Midstreams Elementary or Walmart stop resolving).
-- 172 Taft Ave resolves exactly from the NJ address points; the house there (Microsoft footprint) is enterable.
+- His home address resolves exactly from the NJ address points; the house there (Microsoft footprint) is enterable.
 - Walmart: OSM has loading docks on the SW side, so the store faces NE onto its main lot (verified in a screenshot).
 - Traffic soak on the real network around Route 88 (300 s simulated, 95 cars): no car waits on a red more than 100 s,
   no gridlock; queues build at the Route 88 signals at 5 pm as they should.
@@ -66,7 +66,7 @@ heights, roads, lanes and signs come from the data, never invented where data ex
 - Stylized/blocky but "not overwhelmingly fake"; accuracy to real life is the point. Take the nitty gritty seriously.
 - Traffic must be "genuinely amazing". He wants to be blown away by accuracy.
 - First person by default, you see your legs and feet; animations get extra attention.
-- Places he named: his house (172 Taft Ave), Walmart, BMHS (Brick Memorial HS), Brick Township HS, VMMS (Veterans
+- Places he named: his house, Walmart, BMHS (Brick Memorial HS), Brick Township HS, VMMS (Veterans
   Memorial MS), Midstreams Elementary, Lake Riviera + its park, "Frede park" (find it in the data; spelling unsure),
   Sedge Island with its building, MATES, Resorts + Caesars in Atlantic City.
 - Work phones exist at his Walmart; the store layout should be the real one (no public floor plan was found:
@@ -204,7 +204,7 @@ stalk animation, an exit animation, wipers, night dash glow.
 All of it is pushed (commits 8b84fe0 .. 54ef387) and the `site` workflow is green on 54ef387 (syntax, data, render, vehicles,
 placement audit, region checks, deploy). Dan's folder got the same build (see "Shipping to Dan's PC" below).
 
-**Dan's own house, hand-built (Dan, 14:16: "look up pictures of 172 and handmake it ... including the garage").**
+**Dan's own house, hand-built (Dan, 14:16: "look up pictures of it and handmake it ... including the garage").**
 - Source: Google Maps Street View of his address (capture Jul 2013): 2-storey colonial, brick centre bay with a front
   pediment, grey vinyl siding on the wings, maroon louvred shutters, dark grey roof, white double-door unit with a sidelight
   and 3 steps with white rails, a 2-car garage on the LEFT standing ~2 m proud of the main front, wide concrete drive, a
@@ -221,7 +221,7 @@ placement audit, region checks, deploy). Dan's folder got the same build (see "S
   residential building whose centroid is < 8 m from `homeXZ` and records `h.custom = frame`; `buildDriveways` builds the model,
   the drive (garage-wide, ends at the road edge) and the mailbox.
 - Verified headless (street view, left oblique, aerial): garage left, bay centred, pediment, shutters, garage doors, steps,
-  arborvitae, maple, fence all read like the photo. 172 Taft is on a curve (corner-ish lot), as on the map.
+  arborvitae, maple, fence all read like the photo. The house is on a road curve (corner-ish lot), as on the map.
 - NOT known / guessed: side and rear walls (only plain windows), the fence's exact run (placed from the right wall, 8.5 m across,
   then 6 m towards the street), the garage interior (the interior is still the generic 2-room layout; the garage space behind
   the doors is not modelled), the real room layout. Dan can correct these by eye; colours live in `local/house.json`.

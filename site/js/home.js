@@ -1,4 +1,4 @@
-// 172 Taft Ave: the house you can walk into, the bathroom mirror and the closet, the charger.
+// Dan's home: the house you can walk into, the bathroom mirror and the closet, the charger.
 import * as THREE from '../vendor/three.module.js';
 import { Reflector } from '../vendor/addons/Reflector.js';
 import { pointInPoly, toast, distSeg } from './util.js';
