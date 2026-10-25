@@ -77,8 +77,9 @@ class Game {
     this.player.place(sx, sz, syaw);
     { const h = this.home.house; if (h && h.drive) { const d = h.drive, f = .42; this.player.placeCar(d.sx + (d.ex - d.sx) * f + Math.cos(d.yaw) * (d.width > 5 ? 1.3 : 0), d.sz + (d.ez - d.sz) * f - Math.sin(d.yaw) * (d.width > 5 ? 1.3 : 0), d.yaw + Math.PI); }
       else this.player.placeCar(sx - Math.sin(syaw) * 6, sz - Math.cos(syaw) * 6, syaw); }
-    if (arrive && arrive.car || (!this.region.home)) { const n2 = this.roads.nearest(sx, sz, 400, e => e.cls >= 3); if (n2) { const a = this.roads.at(n2.e, n2.s); const off = n2.e.way.w / 2 - 1.8; this.player.placeCar(n2.qx - a.hz * off, n2.qz + a.hx * off, Math.atan2(a.hx, a.hz)); const C = this.player.car; this.player.x = C.x + Math.cos(C.yaw) * 1.5; this.player.z = C.z - Math.sin(C.yaw) * 1.5; this.player.enterCar(); } }
+    if (arrive && arrive.car || (!this.region.home)) { const n2 = this.roads.nearest(sx, sz, 400, e => e.cls >= 3) || this.roads.nearest(sx, sz, 3000, e => e.cls >= 2); if (n2) { const a = this.roads.at(n2.e, n2.s); const off = n2.e.way.w / 2 - 1.8; this.player.placeCar(n2.qx - a.hz * off, n2.qz + a.hx * off, Math.atan2(a.hx, a.hz)); const C = this.player.car; this.player.x = C.x + Math.cos(C.yaw) * 1.5; this.player.z = C.z - Math.sin(C.yaw) * 1.5; this.player.enterCar(); } }
     this.setpieces = new SetPieces(this);
+    if (!this.region.home) { this.player.sc.x = this.player.sc.z = -1e6; this.player.scooter.visible = false; } // the E2 Pro stays home when you drive somewhere
     bar(1, hp ? 'home: ' + (hp.label || '') : this.region.name);
     $('play').disabled = false;
     $('play').onclick = () => { $('boot').classList.add('hidden'); $('hud').classList.remove('hidden'); this.audio.start(); canvas.requestPointerLock?.(); this.running = true; toast('F: hop on the E2 Pro · Space: kick off · M: map · P: work phone'); };

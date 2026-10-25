@@ -52,6 +52,7 @@ export class SetPieces {
     for (let r = 0; r < 400 && !best; r += 6) for (let a = 0; a < 6.283; a += .3) { const x = p[0] + Math.cos(a) * r, z = p[1] + Math.sin(a) * r; if (W.height(x, z) > .3) { best = [x, z]; break; } }
     if (!best) best = p;
     const [x, z] = best; const y = Math.max(W.height(x, z), 0) + 1.6; // on pilings above the marsh
+    this.g.sedge = best;
     const g = new THREE.Group(); g.position.set(x, 0, z);
     const cedar = new THREE.MeshLambertMaterial({ color: '#8a7358' }), trim = new THREE.MeshLambertMaterial({ color: '#f2efe8' }), roof = new THREE.MeshLambertMaterial({ color: '#4a4744', flatShading: true }), pile = new THREE.MeshLambertMaterial({ color: '#5b4a3a' });
     for (const [px, pz] of [[-4, -3], [4, -3], [-4, 3], [4, 3], [0, -3], [0, 3], [-4, 6], [4, 6]]) { const o = new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, y + .5, 6), pile); o.position.set(px, (y + .5) / 2 - .5, pz); g.add(o); }

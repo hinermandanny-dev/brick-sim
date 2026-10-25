@@ -301,7 +301,7 @@ def akind(tg):
     for (k, v), kd in AK.items():
         if k in tg and (v is None or tg[k] == v): return kd
     return None
-ORDER = {"res": 0, "com": 0, "ind": 0, "school": 1, "farm": 1, "wood": 2, "scrub": 2, "grass": 3, "park": 3, "golf": 3, "cemetery": 3, "wetland": 4, "sand": 4, "dirt": 4,
+ORDER = {"isle": 7.5, "res": 0, "com": 0, "ind": 0, "school": 1, "farm": 1, "wood": 2, "scrub": 2, "grass": 3, "park": 3, "golf": 3, "cemetery": 3, "wetland": 4, "sand": 4, "dirt": 4,
          "pitch": 5, "track": 5, "play": 5, "fuel": 6, "parking": 6, "asphalt": 6, "water": 7, "pool": 8, "pier": 9}
 def clip(poly, x0, z0, x1, z1):
     def cl(pts, inside, inter):
@@ -322,7 +322,7 @@ def clip(poly, x0, z0, x1, z1):
     p = cl(p, lambda q: q[1] >= z0, lambda a, b: iz(a, b, z0)) if p else p
     p = cl(p, lambda q: q[1] <= z1, lambda a, b: iz(a, b, z1)) if p else p
     return p
-water_polys = []; area_polys = []; area_labels = []
+water_polys = []; area_polys = []; area_labels = []; island_polys = []
 for el in L("areas") + L("rels"):
     tg = el.get("tags", {}); kd = akind(tg)
     nm = tg.get("name")
@@ -331,10 +331,14 @@ for el in L("areas") + L("rels"):
     if nm and outs and len(outs[0]) >= 3 and kd not in ("res", "com", "ind"):
         r0 = outs[0]; cx_ = sum(p[0] for p in r0) / len(r0); cz_ = sum(p[1] for p in r0) / len(r0)
         area_labels.append([nm, D(cx_), D(cz_), tg.get("amenity") or tg.get("leisure") or tg.get("natural") or tg.get("landuse") or kd])
+    if tg.get("place") in ("island", "islet"):
+        for r in outs:
+            if len(r) >= 3: island_polys.append(r); area_polys.append(("isle", r, []))
+        continue
     if not kd: continue
     for r in outs:
         if len(r) < 3: continue
-        if kd == "water": water_polys.append(r)
+        if kd == "water": water_polys.append((r, ins))
         area_polys.append((kd, r, [h for h in ins]))
 print("areas", len(area_polys))
 for kd, r, ins in area_polys:
@@ -392,9 +396,18 @@ def sample_grid():
 G = sample_grid()
 G = np.nan_to_num(G, nan=0.0)
 img = Image.new("L", (NX, NZ), 0); dr = ImageDraw.Draw(img)
-for r in water_polys:
+for r, holes in water_polys:
     dr.polygon([((x - gx0) / DS, (z - gz0) / DS) for x, z in r], fill=255)
+    for h in holes:
+        if len(h) >= 3: dr.polygon([((x - gx0) / DS, (z - gz0) / DS) for x, z in h], fill=0)
+for r in island_polys:   # islands drawn as separate polygons inside the bay stay land
+    dr.polygon([((x - gx0) / DS, (z - gz0) / DS) for x, z in r], fill=0)
 wm = np.asarray(img) > 0
+# the ocean is not a polygon in OSM (only a coastline line): 3DEP has no data over it (stored as exactly 0), so treat
+# "no elevation" as sea, except where an island polygon says land
+isl = Image.new("L", (NX, NZ), 0); di = ImageDraw.Draw(isl)
+for r in island_polys: di.polygon([((x - gx0) / DS, (z - gz0) / DS) for x, z in r], fill=255)
+wm = wm | ((G < 0.05) & (np.asarray(isl) == 0))
 # land islands inside water: buildings / non-water areas punched back (holes are handled by area polys visually)
 G = np.where(wm, np.minimum(G, -1.2), np.maximum(G, 0.25))
 # smooth small DEM noise (1 pass 3x3) on land only

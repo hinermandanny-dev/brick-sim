@@ -129,7 +129,7 @@ function roadKey(way) { return [way.t, way.lf, way.lb, way.o, way.w, way.ctl].jo
 const AREA = {
   res: '#86a157', com: '#8f9a6a', ind: '#8d8f78', school: '#8aa45a', farm: '#a49a5e', wood: '#5d6b3f', scrub: '#7a8450', grass: '#88a45a', park: '#80a052',
   golf: '#8fb35f', cemetery: '#86a45d', wetland: '#6c7748', sand: '#e2d3a6', dirt: '#9c8a68', pitch: '#78a04c', track: '#b5654a', play: '#c9b38a', fuel: '#6a6a6c',
-  parking: '#565658', asphalt: '#555557', water: '#3d6a84', pool: '#4fa3c7', pier: '#8a7860',
+  isle: '#7f8c55', parking: '#565658', asphalt: '#555557', water: '#3d6a84', pool: '#4fa3c7', pier: '#8a7860',
 };
 
 export class World {
