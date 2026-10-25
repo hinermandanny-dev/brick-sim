@@ -1,0 +1,28 @@
+# Pulls Brick Township from OpenStreetMap (Overpass) and USGS 3DEP elevation, commits raw data to the `data` branch.
+name: fetch
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [tools/fetch.py, .github/workflows/fetch.yml]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install requests numpy pillow tifffile
+      - run: python tools/fetch.py out
+      - name: commit to data branch
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "brick-sim fetch"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -qm "raw data $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
