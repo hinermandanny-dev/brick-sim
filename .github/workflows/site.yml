@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [site/**, tools/bake.py, tools/check.mjs, .github/workflows/site.yml]
+    paths: [site/**, tools/**, .github/workflows/site.yml]
   workflow_run:
     workflows: [fetch, fetch-pbf, ortho]
     types: [completed]
@@ -37,6 +37,7 @@ jobs:
         run: |
           npm i --no-save --silent playwright@1.49.1 && npx playwright install --with-deps chromium >/dev/null
           node tools/render-check.mjs site && node tools/vehicle-check.mjs site
+          node tools/audit.mjs site --sites 6 --check
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

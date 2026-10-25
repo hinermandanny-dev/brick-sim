@@ -446,12 +446,13 @@ for k, t in list(tiles.items()):
         pts = [((a["p"][i] / 10 - x0), (a["p"][i + 1] / 10 - z0)) for i in range(0, len(a["p"]), 2)]
         if a["k"] in codes: dl.polygon(pts, fill=codes[a["k"]])
         if a["k"] in ("water", "parking", "asphalt", "pitch", "track", "fuel", "pool", "sand", "pier", "play"): d.polygon(pts, fill=255)
-    for b in t["bld"]:
+    nb = [bb for da in (-1, 0, 1) for db in (-1, 0, 1) if (k[0] + da, k[1] + db) in tiles for bb in tiles[(k[0] + da, k[1] + db)]["bld"]]  # neighbours' buildings too: no trees in a house across a tile edge
+    for b in nb:
         pts = [((b["p"][i] / 10 - x0), (b["p"][i + 1] / 10 - z0)) for i in range(0, len(b["p"]), 2)]
         d.polygon(pts, fill=255, outline=255); 
         cx = sum(p[0] for p in pts) / len(pts); cz = sum(p[1] for p in pts) / len(pts)
         d.polygon([(cx + (p[0] - cx) * 1.25, cz + (p[1] - cz) * 1.25) for p in pts], fill=255)
-    for ei in t["roads"]:
+    for ei in {ei for da in (-1, 0, 1) for db in (-1, 0, 1) if (k[0] + da, k[1] + db) in tiles for ei in tiles[(k[0] + da, k[1] + db)]["roads"]}:  # roads of the neighbouring tiles too
         e = edges[ei]; w = ways[e[2]]["w"]
         pts = [((e[3][i] / 10 - x0), (e[3][i + 1] / 10 - z0)) for i in range(0, len(e[3]), 2)]
         d.line(pts, fill=255, width=int(w + (14 if ways[e[2]].get("sv") == "parking_aisle" else 5)))  # no trees in the stall rows the client paints

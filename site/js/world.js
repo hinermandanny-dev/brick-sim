@@ -589,6 +589,11 @@ export class World {
       const roadHalf = e.way.w / 2 + .3; const ex = qx + wx * off - dx * roadHalf, ez = qz + wz * off - dz * roadHalf;
       const len = Math.hypot(ex - sx, ez - sz); if (len < 2 || len > 50) continue;
       const width = wl > 13 && h.r > .3 ? 5.4 : 3.3;
+      { // a driveway that would run through a neighbour's house is not a driveway (audit: drive_through_other_house)
+        const yw = Math.atan2(ex - sx, ez - sz); let blocked = false;
+        for (let s = 1.8; s < len - .3 && !blocked; s += 1) { const f = s / len; for (const o of [-1, 0, 1]) { const px = sx + (ex - sx) * f + Math.cos(yw) * o * width * .4, pz = sz + (ez - sz) * f - Math.sin(yw) * o * width * .4; const c = this.buildingAt(px, pz); if (c && c.P !== h.P && !c.store) { blocked = true; break; } } }
+        if (blocked) continue;
+      }
       const nx = -(ez - sz) / len * width / 2, nz = (ex - sx) / len * width / 2;
       const steps = Math.ceil(len / 3); let pl = -1; const W = new THREE.Color(1, 1, 1);
       for (let k = 0; k <= steps; k++) {
@@ -597,9 +602,17 @@ export class World {
         if (pl >= 0) dw.quadTo(pl, a, b, pl + 1, 0, 1, 0); pl = a;
       }
       const yaw = Math.atan2(ex - sx, ez - sz);
-      // mailbox beside the end of the driveway
-      const mx = ex + nx / (width / 2) * (width / 2 + 0.8) + dx * 0.4, mz = ez + nz / (width / 2) * (width / 2 + 0.8) + dz * 0.4, my = this.height(mx, mz);
-      det.box(mx, my + .55, mz, .1, 1.1, .1, post); det.box(mx, my + 1.15, mz, .24, .26, .5, mailCol, yaw);
+      // mailbox beside the end of the driveway: right side first, then left; never in a road, a house or another driveway
+      let mx = ex, mz = ez, my = 0, mok = false;
+      for (const [sd, lat] of [[1, .8], [-1, .8], [1, 1.8], [-1, 1.8]]) {
+        const cx2 = ex + nx / (width / 2) * (width / 2 + lat) * sd - dx * .5, cz2 = ez + nz / (width / 2) * (width / 2 + lat) * sd - dz * .5;
+        const rn = R.nearest(cx2, cz2, 25, e2 => !e2.way.sv); if (rn && rn.d - rn.e.way.w / 2 < .35) continue;
+        if (this.nearBuilding(cx2, cz2, .4)) continue;
+        let clash = false; for (const o of recs) { const [dd] = distSeg(cx2, cz2, o.sx, o.sz, o.ex, o.ez); if (dd < o.width / 2 + .3) { clash = true; break; } } if (clash) continue;
+        mx = cx2; mz = cz2; mok = true; break;
+      }
+      my = this.height(mx, mz);
+      if (mok) { det.box(mx, my + .55, mz, .1, 1.1, .1, post); det.box(mx, my + 1.15, mz, .24, .26, .5, mailCol, yaw); }
       // front door and garage door on the wall facing the road
       const fy = h.ymin + 0.45;
       const dxp = best.px + wx * (-off * .9) + dx * 0.06, dzp = best.pz + wz * (-off * .9) + dz * 0.06;
@@ -617,7 +630,7 @@ export class World {
         det.box(px2, yy + .03, pz2, 1.3, .06, 1.2, mulch, Math.atan2(wx, wz));
         det.box(px2, yy + sh / 2, pz2, .85, sh, .8, shrubCol.clone().multiplyScalar(.85 + hash(u * 7) * .3), Math.atan2(wx, wz) + hash(u) * .4);
       }
-      recs.push({ sx, sz, ex, ez, yaw, width, len, house: h, mail: [mx, mz], addr: h.b.a || '', car: h.r < .62 });
+      recs.push({ sx, sz, ex, ez, yaw, width, len, house: h, mail: mok ? [mx, mz] : null, addr: h.b.a || '', car: h.r < .62 });
     }
     // above-ground pools (OSM swimming_pool areas in back yards are almost all the round above-ground kind here)
     for (const a of t.d.areas) {
@@ -637,7 +650,14 @@ export class World {
   }
   buildTrees(t) {
     const by = [[], [], [], []];
-    for (const [x, z, sp] of t.d.trees) by[sp].push([x / 10, z / 10]);
+    const drs = this.drives.get(t.k) || []; t.treeList = [];
+    for (const [x0, z0, sp] of t.d.trees) {
+      const x = x0 / 10, z = z0 / 10;
+      let bad = false; for (const d of drs) { const [dd] = distSeg(x, z, d.sx, d.sz, d.ex, d.ez); if (dd < d.width / 2 + 1.4) { bad = true; break; } } // not in a driveway
+      if (!bad) { const n = this.roads.nearest(x, z, 20, e => !e.way.sv); if (n && n.d - n.e.way.w / 2 < 1.5) bad = true; } // trunk at least 1.5 m from the carriageway
+      if (!bad && this.nearBuilding(x, z, 1.6)) bad = true; // and 1.6 m from any wall
+      if (bad) continue; by[sp].push([x, z]); t.treeList.push([x, z]);
+    }
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     for (let sp = 1; sp <= 3; sp++) {
       const list = by[sp]; if (!list.length) continue;
@@ -659,8 +679,11 @@ export class World {
     for (const [k, list] of by) {
       const im = new THREE.InstancedMesh(this.propGeo[k], MAT.vcFlat, list.length);
       list.forEach((pr, i) => {
-        const x = pr[1] / 10, z = pr[2] / 10;
+        let x = pr[1] / 10, z = pr[2] / 10;
         let yaw = 0; const n = this.roads.nearest(x, z, 30);
+        if (n && ['pole', 'lamp', 'stop', 'yield', 'sign', 'speed'].includes(k)) { // posts stand beside the road, never on it (audit: post_in_road)
+          for (let it = 0; it < 3; it++) { const n3 = this.roads.nearest(x, z, 30, e => !e.way.sv); if (!n3) break; const lim = n3.e.way.w / 2 + .7; if (n3.d >= lim) break; let ux = x - n3.qx, uz = z - n3.qz; const L = Math.hypot(ux, uz); if (L < .05) { const a2 = this.roads.at(n3.e, n3.s); ux = -a2.hz; uz = a2.hx; } else { ux /= L; uz /= L; } x = n3.qx + ux * lim; z = n3.qz + uz * lim; }
+        }
         if (n) { const a = this.roads.at(n.e, n.s); yaw = Math.atan2(a.hx, a.hz); if (k === 'stop' || k === 'yield') yaw += Math.PI; }
         q.setFromAxisAngle(Y, yaw); p.set(x, this.height(x, z), z); im.setMatrixAt(i, m4.compose(p, q, s));
         t.props.push({ k, x, z, yaw, name: pr[3] });
@@ -755,6 +778,12 @@ export class World {
     const m = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }); m._own = true; t.g.add(new THREE.Mesh(geo, m));
   }
   // ---------------------------------------------------------------- queries
+  // is (x, z) inside a footprint or within r metres of one? (this tile and its neighbours)
+  nearBuilding(x, z, r) {
+    const [i, j] = this.key(x, z).split('_').map(Number);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const cs = this.colliders.get((i + a) + '_' + (j + b)); if (!cs) continue; for (const c of cs) { if (x < c.minx - r || x > c.maxx + r || z < c.minz - r || z > c.maxz + r) continue; if (pointInPoly(x, z, c.P)) return c; const P = c.P; for (let q = 0; q < P.length; q += 2) if (distSeg(x, z, P[q], P[q + 1], P[(q + 2) % P.length], P[(q + 3) % P.length])[0] < r) return c; } }
+    return null;
+  }
   buildingAt(x, z, pad = 0) {
     const k = this.key(x, z); const out = [];
     for (const kk of [k]) { const cs = this.colliders.get(kk); if (!cs) continue; for (const c of cs) if (x > c.minx - pad && x < c.maxx + pad && z > c.minz - pad && z < c.maxz + pad && pointInPoly(x, z, c.P)) return c; }

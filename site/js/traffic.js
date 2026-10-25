@@ -487,9 +487,11 @@ export class Traffic {
     for (const d of recs) {
       if (!d.car) continue;
       if (H && Math.hypot(d.house.cx - H[0], d.house.cz - H[1]) < 15) continue;
-      const f = .35 + r() * .3; const x = d.sx + (d.ex - d.sx) * f, z = d.sz + (d.ez - d.sz) * f;
-      spots.push([x, z, d.yaw + (r() < .5 ? Math.PI : 0), pickModel(r(), false)]);
-      if (d.width > 5 && r() < .5) { const ox = Math.cos(d.yaw) * 2.6, oz = -Math.sin(d.yaw) * 2.6; spots.push([x + ox, z + oz, d.yaw, pickModel(r(), false)]); }
+      if (d.len < 5.6) continue; // a car (4.6 m) does not fit a drive this short: it would stand in the road
+      const f = Math.min(Math.max(.35 + r() * .3, 2.6 / d.len), 1 - 2.6 / d.len); const x = d.sx + (d.ex - d.sx) * f, z = d.sz + (d.ez - d.sz) * f;
+      const tryPush = (px, pz, yw, m) => { if (this.spotOk(px, pz, yw, spots)) spots.push([px, pz, yw, m]); };
+      tryPush(x, z, d.yaw + (r() < .5 ? Math.PI : 0), pickModel(r(), false));
+      if (d.width > 5 && r() < .5) { const ox = Math.cos(d.yaw) * 2.6, oz = -Math.sin(d.yaw) * 2.6; tryPush(x + ox, z + oz, d.yaw, pickModel(r(), false)); }
     }
     // parking-lot aisles: stalls both sides, perpendicular
     const x0 = t.i * 400, z0 = t.j * 400;
@@ -500,8 +502,8 @@ export class Traffic {
         if (r() > occ) continue;
         const a = R.at(e, s); const off = e.way.w / 2 + 2.7; const x = a.x - a.hz * off * sd, z = a.z + a.hx * off * sd;
         if (x < x0 || x >= x0 + 400 || z < z0 || z >= z0 + 400) continue;
-        if (this.world.buildingAt(x, z, 1.5)) continue;
-        spots.push([x, z, Math.atan2(a.hx, a.hz) + (Math.PI / 2) * sd + (r() < .3 ? Math.PI : 0), pickModel(r(), false)]);
+        const yw2 = Math.atan2(a.hx, a.hz) + (Math.PI / 2) * sd + (r() < .3 ? Math.PI : 0); if (this.world.buildingAt(x, z, 1.5) || !this.spotOk(x, z, yw2, spots)) continue;
+        spots.push([x, z, yw2, pickModel(r(), false)]);
       }
     }
     const g = new THREE.Group(); const by = MODELS.map(() => []);
@@ -514,6 +516,13 @@ export class Traffic {
       im.castShadow = true; g.add(im);
     });
     t.g.add(g); this.parked.set(t.k, spots);
+  }
+  // may a 2 x 4.6 m car stand here? not in a house, not on a carriageway, not on another parked car (audit classes parked_*)
+  spotOk(px, pz, yw, spots) {
+    const c = Math.cos(yw), s = Math.sin(yw);
+    for (const [a, b] of [[0, 0], [1, 2.3], [-1, 2.3], [1, -2.3], [-1, -2.3]]) { const qx = px + c * a + s * b, qz = pz - s * a + c * b; if (this.world.nearBuilding(qx, qz, .25)) return false; const n = this.roads.nearest(qx, qz, 25, e => !e.way.sv); if (n && n.d - n.e.way.w / 2 < -.2) return false; }
+    for (const o of spots) if (Math.hypot(o[0] - px, o[1] - pz) < 2.1) return false;
+    return true;
   }
   unparkTile(t) { this.parked.delete(t.k); }
   // solid obstacles for the player: moving + parked cars as oriented boxes

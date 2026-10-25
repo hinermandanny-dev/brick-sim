@@ -1,0 +1,7 @@
+{
+  "drive_through_other_house": 0.15, "drive_through_own_house": 0.05,
+  "mailbox_in_house": 0.1, "mailbox_in_road": 0.1, "mailbox_in_driveway": 1.0,
+  "tree_in_road": 0.1, "tree_in_house": 0.1, "tree_in_driveway": 0.1,
+  "parked_in_house": 0.15, "parked_on_carriageway": 0.1, "parked_overlap_car": 0.1,
+  "post_in_road": 1.0, "post_in_house": 0.5
+}
