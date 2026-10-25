@@ -78,6 +78,26 @@ heights, roads, lanes and signs come from the data, never invented where data ex
 Dan's words: "a huge polish pass, making houses look actually like the real houses, moving incorrectly placed things,
 fixing the scooter model and adding a screen, and making the scooter riding experience much better, and improving
 infrastructure overall and fixing the sometimes corrupted map". As a list:
+**Dan's answers (25 Oct 13:15) - these settle the scope, do not re-ask:**
+- Run it in a fresh session (Opus), from this file.
+- The "corrupted map" is **scrambled textures, general flickering and texture laziness** (textures loading late / low
+  res). Suspects, in order: the per-tile 768 px canvas ground texture (~30 live tiles, never mip-limited, disposed and
+  re-created as you move: GPU memory churn and late uploads); z-fighting between terrain paint, road strips (+0.06),
+  junction boxes (+0.065), curbs, bars and crosswalks (polygonOffset fights); far tiles appearing before their texture
+  is drawn; anisotropy 8 on every canvas texture. Fix the class: a texture budget/atlas, stable layer offsets, no
+  visible tile before it is complete, and a headless check that renders fixed views and fails on flicker (two frames
+  of a static camera must be identical) and on untextured tiles.
+- Real house looks come from **street photos: Mapillary** (free API, CC-BY-SA, needs a free client token that Dan
+  creates; keep it in `_secrets/`, never in the repo). Plan: per house, find Mapillary images within ~40 m facing it,
+  read siding colour (dominant facade colour), storeys and roof shape (vision pass, cheapest model that can do it),
+  garage side; bake into per-building tags; houses without coverage keep the improved guesses. Process it on GitHub
+  Actions, not Dan's PC.
+- The family car is a **2005 Nissan Pathfinder** (R51: mid-size body-on-frame SUV, 4.0 V6 ~270 hp, 5-speed auto,
+  ~2,000 kg, tall seating). Model that one. But Dan says **the important thing is the driving and the interior view**:
+  a convincing first-person cabin (2005 Pathfinder dash, gauges with live needles, wheel turning with the steering,
+  hands on the wheel, mirrors, A-pillars, hood visible) and driving feel (gears/RPM, weight transfer, body roll,
+  grip/understeer, brake curve, return-to-centre steering, engine/road/wind sound).
+
 1. **Houses that look like the real ones.** Today every house is a random siding colour, a 45/55 ranch-vs-two-storey
    guess, a gable roof on the oriented box, and a door/garage guess. Needs per-house truth: storeys, roof shape,
    siding colour, garage side, porch. Free sources to evaluate: OSM tags where mapped (building:levels, roof:shape,
