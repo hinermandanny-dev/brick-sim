@@ -135,6 +135,7 @@ const AREA = {
 // ground texture: one pooled canvas per tile at a fixed size, plus a shared world-space detail map in the shader so the
 // ground stays crisp up close without a bigger per-tile texture (late/low-res ground was part of the 25 Oct "corrupted map")
 const GROUND_R = 768;
+const PHOTO_WINS = new Set(['grass', 'park', 'golf', 'cemetery', 'school', 'farm', 'wood', 'scrub', 'wetland', 'res', 'com', 'ind', 'isle']);
 let DETAIL = null;
 function groundMat(tex) {
   if (!DETAIL) {
@@ -205,6 +206,7 @@ export class World {
       for (let q = 0; q < DN * DN; q++) dem[q] = (bin.charCodeAt(2 * q) | (bin.charCodeAt(2 * q + 1) << 8)) << 16 >> 16;
       const [i, j] = k.split('_').map(Number);
       const t = { k, i, j, d, dem, g: new THREE.Group() };
+      if (d.g) { try { t.gimg = await createImageBitmap(await (await fetch(this.base + 'ground/' + k + '.png')).blob()); } catch (e) { t.gimg = null; } } // real ground cover (2020 orthophoto classes)
       this.build(t);                       // build fully first: a tile is never visible half-made
       if (this.renderer) for (const tx of t.texs || []) this.renderer.initTexture(tx); // upload now, not on first sight
       this.tiles.set(k, t);
@@ -263,7 +265,8 @@ export class World {
       const areas = [...t.d.areas].sort((a, b) => a.o - b.o);
       let paved = false;
       for (const a of areas) {
-        if (!paved && a.o > 0) { paved = true; this.paintPaved(c, t, x0, z0, s); }
+        if (!paved && a.o > 0) { paved = true; if (t.gimg) c.drawImage(t.gimg, 0, 0, R, R); else this.paintPaved(c, t, x0, z0, s); }
+        if (t.gimg && a.o > 0 && PHOTO_WINS.has(a.k)) continue; // the photo knows better than a park / wood / landuse outline
         c.beginPath();
         const ring = (p) => { for (let q = 0; q < p.length; q += 2) { const X = (p[q] / 10 - x0) * s, Y = (p[q + 1] / 10 - z0) * s; q ? c.lineTo(X, Y) : c.moveTo(X, Y); } c.closePath(); };
         ring(a.p); for (const h of a.h) ring(h);
@@ -274,7 +277,7 @@ export class World {
         if (a.k === 'pitch') { c.save(); c.clip('evenodd'); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.2; c.stroke(); c.restore(); }
         if (a.k === 'cemetery') { c.save(); c.clip('evenodd'); c.fillStyle = '#9a978f'; for (let q = 0; q < 700; q++) c.fillRect(r() * R, r() * R, 1.5, 1); c.restore(); }
       }
-      if (!paved) this.paintPaved(c, t, x0, z0, s);
+      if (!paved) { if (t.gimg) c.drawImage(t.gimg, 0, 0, R, R); else this.paintPaved(c, t, x0, z0, s); }
     }
     tex.needsUpdate = true; (t.texs || (t.texs = [])).push(tex);
     const m = groundMat(tex); m._own = true;

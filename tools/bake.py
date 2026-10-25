@@ -416,9 +416,27 @@ G = np.where(wm, G, Gs)
 print("dem grid", NX, NZ, round(float(G.min()), 1), round(float(G.max()), 1))
 # flatten under roads a touch: handled client-side by draping
 
+# ---------------- real ground cover from the 2020 orthophoto (tools/fetch_ortho.py + tools/ortho_classify.py) ----------------
+CL = None; OG = None
+if os.path.exists(os.path.join(RAW, "ortho.jpg")):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ortho_classify as OC
+    Image.MAX_IMAGE_PIXELS = None
+    OG = json.load(open(os.path.join(RAW, "ortho.json"))); src = np.asarray(Image.open(os.path.join(RAW, "ortho.jpg")).convert("RGB"))
+    CL = np.zeros(src.shape[:2], np.uint8); M8 = 12
+    for r0 in range(0, src.shape[0], 400):
+        a0, a1 = max(0, r0 - M8), min(src.shape[0], r0 + 400 + M8)
+        c = OC.majority(OC.classify(src[a0:a1])); CL[r0:min(src.shape[0], r0 + 400)] = c[r0 - a0:r0 - a0 + min(400, src.shape[0] - r0)]
+    del src
+    os.makedirs(os.path.join(OUT, "ground"), exist_ok=True)
+    print("ortho classes", {k: round(float((CL == k).mean()), 3) for k in range(8)})
+def ortho_at(x, z):
+    if CL is None: return -1
+    c, r = int(x - OG["gx0"]), int(z - OG["gz0"])
+    return int(CL[r, c]) if 0 <= r < CL.shape[0] and 0 <= c < CL.shape[1] else -1
+
 # ---------------- procedural trees (masks) ----------------
 rng = random.Random(1977)
-TREE_DENS = {"wood": 1 / 45, "scrub": 1 / 90, "wetland": 1 / 220, "res": 1 / 330, "park": 1 / 300, "cemetery": 1 / 400, "school": 1 / 1500, "golf": 1 / 700, "grass": 1 / 1200, "com": 1 / 2500, "ind": 1 / 3000, "farm": 1 / 6000}
+TREE_DENS = {"res_wood": 1 / 110, "wood": 1 / 45, "scrub": 1 / 90, "wetland": 1 / 220, "res": 1 / 330, "park": 1 / 300, "cemetery": 1 / 400, "school": 1 / 1500, "golf": 1 / 700, "grass": 1 / 1200, "com": 1 / 2500, "ind": 1 / 3000, "farm": 1 / 6000}
 for k, t in list(tiles.items()):
     x0, z0 = k[0] * TS, k[1] * TS
     m = Image.new("L", (400, 400), 0); d = ImageDraw.Draw(m)          # 1 m mask: 0 free, 255 blocked
@@ -448,6 +466,10 @@ for k, t in list(tiles.items()):
         if M[int(pz), int(px)]: continue
         code = LU[int(pz), int(px)]
         kd = inv.get(code)
+        oc = ortho_at(x0 + px, z0 + pz)       # the photo says what is really there: woods get woods, lots and water get none
+        if oc in (1, 4, 5, 7): continue
+        if oc == 3: kd = "wood" if kd not in ("res",) else "res_wood"
+        if oc == 2 and kd in ("wood", "scrub"): kd = "grass"
         dens = TREE_DENS.get(kd, 1 / 4000)
         if rng.random() < dens * (TS * TS / tries):
             gx = (x0 + px - gx0) / DS; gz = (z0 + pz - gz0) / DS
@@ -466,6 +488,9 @@ for (i, j), t in tiles.items():
     sub = G[np.ix_(rows, cols)]
     t["dem"] = base64.b64encode(np.round(sub * 10).astype("<i2").tobytes()).decode()
     t["water"] = 1 if wm[np.ix_(rows, cols)].any() else 0
+    if CL is not None:  # this tile's ground-cover classes as a 400x400 palette PNG (1 m pixels)
+        c0, r0, n4 = int(i * TS - OG["gx0"]), int(j * TS - OG["gz0"]), int(TS)
+        if 0 <= c0 and 0 <= r0 and c0 + n4 <= CL.shape[1] and r0 + n4 <= CL.shape[0]: OC.to_png(CL[r0:r0 + n4, c0:c0 + n4], os.path.join(OUT, "ground", f"{i}_{j}.png")); t["g"] = 1
     with open(os.path.join(OUT, "tiles", f"{i}_{j}.json"), "w") as f:
         json.dump(t, f, separators=(",", ":"))
 # ---------------- addresses (public OSM data; used to find a home by street address) ----------------

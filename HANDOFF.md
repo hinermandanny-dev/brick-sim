@@ -129,6 +129,77 @@ infrastructure overall and fixing the sometimes corrupted map". As a list:
    his GPU (768 px canvas per tile x ~30 tiles), z-fighting between road/curb/junction layers. Get Dan's description
    or a screenshot, reproduce, fix the cause, and add a check that fails on it.
 
+## POLISH PASS, part 1 (25 Oct afternoon session) - what landed, what is measured, what is left
+Commits 0324483, de53863 and the ortho commit after them. Every claim below was measured headless in the cloud container
+(bake from the `data` branch + Chromium/SwiftShader); nothing ran on Dan's PC.
+
+**Map flicker / "corrupted map" (item 6) - fixed at the causes found, one cause not reproducible headless:**
+- Depth precision: camera near 0.05 / far 3500 on a 24-bit depth buffer resolves only ~0.1 m at 300 m, while the
+  ground layers are mm-cm apart (terrain, road +0.06, junction box +0.065, bars +0.012 over road). Fix: renderer
+  `logarithmicDepthBuffer` (resolution ~0.2 mm at 500 m). Junction boxes moved to +0.072, bars to +0.018.
+  Note: with log depth, polygonOffset no longer does anything (gl_FragDepth): layers must stay geometrically apart.
+  `?nolog` turns the fix off for comparison.
+- Tiles that failed to fetch were deleted from `have` for good (a permanent hole): now retried with backoff (2,4,8,16,32 s).
+  A tile was registered before it was built (a throw left a half tile): now built first, textures uploaded with
+  `renderer.initTexture` at build time (no late upload on first sight).
+- Ground textures: 768 px canvas per tile was created and disposed on every tile move (GPU churn). Now pooled
+  (same-size canvases and textures reused), anisotropy 8 -> 4, plus a shared world-space detail texture in the ground
+  shader (`groundMat`), so the ground is crisp up close.
+- `tools/render-check.mjs` (runs in the site workflow): fixed viewpoints (Walmart lot, an arterial, a side street, a
+  Walmart aerial screenshot); fails if >0.4 % of pixels flip between two renders 2 mm apart (z-fighting), on missing or
+  untextured tiles, and on page errors. It renders into a 24-bit fixed depth target because SwiftShader's default depth is
+  float and hides z-fighting. HONEST LIMIT: even at 24 bit the headless views did not show the flicker before the fix
+  (0.01-0.04 % both ways), so the check guards holes/regressions but has not reproduced Dan's flicker. If Dan still sees
+  it: get a screenshot or a description of where (distance, which surface), and check the shadow map next
+  (sky.js: 140 m box, bias -0.0006 = ~0.24 m, PCFSoft; shadows are off in `?low`, so the check never saw them).
+
+**Grass by the Walmart that isn't there (Dan, 25 Oct 13:17) - fixed for the whole map with real ground cover:**
+- Cause: land with no OSM landuse was painted as lawn. At Walmart the truth (2020 orthophoto) is: the paved lot NE,
+  leaf-off WOODS around the store and along Route 88, a retention pond W, mowed strips by the store and E of the lot.
+- `tools/fetch_ortho.py` + `.github/workflows/ortho.yml`: NJ Office of GIS 2020 natural-colour orthophotos
+  (maps.nj.gov `Basemap/Orthos_Natural_2020_NJ_WM/MapServer/tile/{z}/{y}/{x}`, free, attribution requested), z17,
+  3,036 tiles, resampled onto the game grid at 1 m -> `ortho.jpg` (45 MB) on the `data` branch, plus `preview/*.jpg`
+  crops. Dispatch per region with input `region` (data-<region> branches: ac, mates, ibsp still need it).
+- `tools/ortho_classify.py`: classes 1 paved, 2 lawn, 3 woods, 4 water, 5 sand, 6 dirt, 7 roof/bright, by colour +
+  9 m luminance texture, then a 7x7 majority filter. Measured on the Walmart crop: woods lum 100-118 sat .10-.12 sd 11-13;
+  lawn sd 4-5, r-b 16 (straw) or g-r 14; concrete lot lum 160 sd 22 (cars); pond b>r by 28. Leaf-off woods and asphalt
+  have nearly the same colour: texture is what separates them. Roads/buildings come from OSM anyway.
+  Brick-wide: woods 61 %, paved 14 %, water 17 %, lawn 7 %.
+- bake.py writes `site/data/ground/<tile>.png` (400x400 palette PNG, 9 MB total) and the client draws it under the OSM
+  layers; park/wood/landuse outlines no longer overpaint it (`PHOTO_WINS`). Trees follow the photo: woods get forest
+  density (414k trees, was 233k), lots/water/roofs get none. Regions without ortho fall back to `paintPaved` (stall rows
+  either side of OSM parking aisles, lot lanes and 5 m aprons around big buildings).
+- Tuning more: `python tools/ortho_classify.py crop.jpg out.jpg` prints class shares and writes photo|classes side by side.
+
+**Scooter (items 3, 4) - done:** `js/vehicles.js` `makeScooter`: E2 Pro at real size (deck, fender + brake pad, tail
+light, folding latch, 13° rake), the bar/stem/fork/front wheel TURN with steering, drink holder on the stem, 10" wheels.
+Live dashboard screen on the bar (`drawScooterScreen`): speed digits, 5 battery bars, ECO/D/S, headlight, Bluetooth, lock.
+Riding: throttle ramps (softer in ECO), progressive brake (4.6 m/s²), KERS drag when coasting (+ a little charge back),
+sidewalk slab joints every 1.5 m (thump + sound), surface vibration and a small bob in first person, steering eases back.
+`tools/vehicle-check.mjs` measured: ECO 9.2 / D 12.2 / S 18.3 mph (spec 9.3 / 12.4 / 18.6).
+
+**Car (item 7) - the 2005 Pathfinder, done to a first standard:** R51 body (raked glasshouse, tall tail lamps, roof
+rails, flares, 6-spoke 265/70R16), silver by default (`localStorage carColor`; Dan has not said the colour yet).
+Cabin from the driver's seat (eye 1.43 m): dash, binnacle with LIVE tach / speedo / fuel / temp / PRND4321 / odometer,
+4-spoke wheel that turns with your hands on it, A-pillars, hood, seats, headliner, door cards, three mirrors that really
+reflect (render targets, one per frame, round-robin, off in `?low`). `PathfinderDrive`: VQ40DE torque curve, torque
+converter, RE5R05A ratios with throttle-based shift schedule + kickdown, idle creep, hold S at a stop for reverse,
+brakes ~1 g on asphalt, understeer gradient + grip cap with squeal, roll ~4° at 0.5 g, brake dive, head sway,
+V6 firing-frequency engine sound. Measured: 0-60 mph 8.4 s, 60-0 in 44.6 m, wheel returns to centre on release.
+Left for later: exterior detail (door seams, badges, fog lights), interior door handles, rear seat detail, turn-signal
+stalk animation, an exit animation, wipers, night dash glow.
+
+**Not started this session (in this order next):**
+1. Item 2, placement audit: measure each class on the baked data (driveway through a house, mailbox in a driveway,
+   tree in a road/driveway/house, parked car overlaps, sign posts in the road, lamps over houses), fix, add to check.mjs.
+   The ortho classes now give a real-world signal for driveways (paved pixels between a house and its road).
+2. Item 1, houses: roof colour per house can be read from ortho.jpg (median of the footprint's pixels) right now.
+   Storeys/garages: NJ MOD-IV parcel data (BLDG_DESC like "2SF2G", YR_CONSTR) is the free source to try before Mapillary;
+   Mapillary still needs Dan's free client token in `_secrets/`.
+3. Item 5: PLAY-UPDATE.cmd (Dan's local copy has the OLD bake: no ortho ground; the site/data on Pages is current),
+   faster parallel bake, render checks per region.
+4. Teleport fade + car/scooter cases (item 8).
+
 ## New Jersey: what exists (25 Oct, ~05:20 ET, same night session)
 The separate session could not be started automatically (the brain commander rightly refused an unverifiable bus
 order; the scheduled-task tool was denied by the permission system), so the first NJ steps were done in the Brick session.
