@@ -21,6 +21,9 @@ jobs:
       - run: set -o pipefail && python tools/fetch.py out --dem-only 2>&1 | tee -a out/stderr.txt
         shell: bash
         continue-on-error: true
+      - run: set -o pipefail && python tools/fetch_extra.py out 2>&1 | tee -a out/stderr.txt
+        shell: bash
+        continue-on-error: true
       - name: commit to data branch
         if: always()
         run: |

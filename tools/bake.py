@@ -211,6 +211,30 @@ def num(v):
     except Exception: return None
 RES = {"house", "detached", "residential", "semidetached_house", "bungalow", "terrace", "yes", "garage", "shed", "cabin", "static_caravan"}
 blds = L("buildings"); walmart = None; nb = 0; bpolys = []
+# Microsoft footprints fill the houses OSM has not mapped yet (dropped where an OSM building already stands)
+if os.path.exists(os.path.join(RAW, "msbuildings.json.gz")):
+    cell = {}
+    def ckey(x, z): return (int(x // 20), int(z // 20))
+    for el in blds:
+        if el.get("type") != "way" or not el.get("geometry"): continue
+        r = [P(p["lat"], p["lon"]) for p in el["geometry"]]
+        xs = [p[0] for p in r]; zs = [p[1] for p in r]
+        for i in range(int(min(xs) // 20), int(max(xs) // 20) + 1):
+            for j in range(int(min(zs) // 20), int(max(zs) // 20) + 1): cell.setdefault((i, j), []).append(r)
+    def inside(x, z, r):
+        c = False; n = len(r)
+        for i in range(n):
+            x1, z1 = r[i]; x2, z2 = r[i - 1]
+            if (z1 > z) != (z2 > z) and x < (x2 - x1) * (z - z1) / (z2 - z1) + x1: c = not c
+        return c
+    added = 0
+    for el in L("msbuildings"):
+        r = [P(p["lat"], p["lon"]) for p in el["geometry"]]
+        cx = sum(p[0] for p in r) / len(r); cz = sum(p[1] for p in r) / len(r)
+        if any(inside(cx, cz, o) for o in cell.get(ckey(cx, cz), [])): continue
+        if any(inside(px, pz, o) for px, pz in r[:-1] for o in cell.get(ckey(px, pz), [])): continue
+        blds.append(el); added += 1
+    print("microsoft buildings added", added)
 for el in blds:
     tg = el.get("tags", {}); outs, ins = rings_of(el)
     for r in outs:
@@ -431,6 +455,11 @@ try:
         x, z = P(lat, lon); addr.append([n, st, D(x), D(z)])
 except Exception as ex:
     print("addr skipped", ex)
+if os.path.exists(os.path.join(RAW, "addrpoints.json.gz")):
+    with gzip.open(os.path.join(RAW, "addrpoints.json.gz"), "rt") as f: ap = json.load(f)
+    for num, st, lat, lon, muni in ap:
+        x, z = P(lat, lon); addr.append([num, st.title(), D(x), D(z)])
+    print("nj address points merged", len(ap))
 json.dump(addr, open(os.path.join(OUT, "addr.json"), "w"), separators=(",", ":"))
 print("addresses", len(addr))
 # ---------------- bus routes: tag the ways NJ Transit buses run on ----------------
