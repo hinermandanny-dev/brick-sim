@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths: [site/**, tools/**, .github/workflows/site.yml]
   workflow_run:
-    workflows: [fetch, fetch-pbf, ortho]
+    workflows: [fetch, fetch-pbf, ortho, fetch-modiv]
     types: [completed]
 permissions:
   contents: read
