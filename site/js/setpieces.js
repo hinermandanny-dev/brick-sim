@@ -62,10 +62,35 @@ export class SetPieces {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(8.5, .9, .08), trim); rail.position.set(0, y + .55, 6.35); g.add(rail);
     for (let i = -3; i <= 3; i += 2) for (const yy of [1.6, 4.1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, .06), new THREE.MeshLambertMaterial({ color: '#3a4650' })); w.position.set(i, y + yy, 3.27); g.add(w); const f = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.5, .04), trim); f.position.set(i, y + yy, 3.25); g.add(f); }
     const door = new THREE.Mesh(new THREE.BoxGeometry(1, 2.1, .08), trim); door.position.set(0, y + 1.05, 3.3); g.add(door);
-    // dock out into the bay with a couple of kayaks
-    const dock = new THREE.Mesh(new THREE.BoxGeometry(2, .18, 22), pile); dock.position.set(0, .9, 17); g.add(dock);
-    for (let i = 0; i < 6; i++) { const o = new THREE.Mesh(new THREE.CylinderGeometry(.12, .12, 2.2, 6), pile); o.position.set(i % 2 ? .9 : -.9, 0, 8 + i * 4); g.add(o); }
-    for (const [kx, kc] of [[1.6, '#e8b23a'], [2.4, '#d0452f']]) { const k = new THREE.Mesh(new THREE.CapsuleGeometry(.3, 3.1, 4, 8), new THREE.MeshLambertMaterial({ color: kc })); k.rotation.x = Math.PI / 2; k.scale.set(1, 1, .45); k.position.set(kx, .15, 22); g.add(k); }
+    // Dan (25 Oct, from the NJDEP photo): two porta-potties beside the main house, and the salt marsh cut off by a
+    // small, fairly narrow waterway where the boats dock
+    for (const [px, col] of [[6.6, '#2f6e9e'], [8.2, '#3d7a3a']]) {
+      const pp = new THREE.Group(); pp.position.set(px, Math.max(W.height(x + px, z), 0) + .05, -.5);
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.2, 1.15), new THREE.MeshLambertMaterial({ color: col })); shell.position.y = 1.1; pp.add(shell);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(1.25, .14, 1.25), new THREE.MeshLambertMaterial({ color: '#e9e6dc' })); top.position.y = 2.27; pp.add(top);
+      const doorP = new THREE.Mesh(new THREE.BoxGeometry(.8, 1.9, .04), new THREE.MeshLambertMaterial({ color: new THREE.Color(col).multiplyScalar(.8) })); doorP.position.set(0, 1.0, .6); pp.add(doorP);
+      g.add(pp);
+    }
+    // the channel: a narrow waterway across the marsh in front of the house (water drawn on the marsh surface)
+    const CH = { off: 15, w: 8, len: 90 };
+    const strip = (wid, mat, lift) => { const geo = new THREE.PlaneGeometry(CH.len, wid, 30, 2); geo.rotateX(-Math.PI / 2); const pa = geo.attributes.position;
+      for (let i = 0; i < pa.count; i++) { const lx = pa.getX(i), lz = pa.getZ(i) + CH.off + Math.sin(lx / 18) * 2.2; pa.setZ(i, lz); pa.setY(i, Math.max(W.height(x + lx, z + lz), 0) + lift); }
+      geo.computeVertexNormals(); const m = new THREE.Mesh(geo, mat); g.add(m); return m; };
+    strip(CH.w + 3, new THREE.MeshLambertMaterial({ color: '#5a4f3c' }), .03);                                            // mud banks
+    strip(CH.w, new THREE.MeshPhongMaterial({ color: '#3d6a84', specular: '#bcd4e0', shininess: 60, polygonOffset: true, polygonOffsetFactor: -2 }), .05); // water
+    // walkway from the porch to a bulkhead dock along the near bank of the channel
+    const ground0 = Math.max(W.height(x, z + CH.off - CH.w / 2 - 1), 0);
+    const walk = new THREE.Mesh(new THREE.BoxGeometry(1.4, .12, CH.off - CH.w / 2 - 6.4), pile); walk.position.set(0, ground0 + .45, 6.4 + (CH.off - CH.w / 2 - 6.4) / 2); g.add(walk);
+    const dock = new THREE.Mesh(new THREE.BoxGeometry(24, .18, 2.2), pile); dock.position.set(0, ground0 + .45, CH.off - CH.w / 2 - .4); g.add(dock);
+    for (let i = -11; i <= 11; i += 3.7) { const o = new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, 2, 6), pile); o.position.set(i, ground0 - .3, CH.off - CH.w / 2 + .6); g.add(o); }
+    // the Sedge Shuttle (pontoon boat) and kayaks tied up in the channel
+    const pont = new THREE.Group(); pont.position.set(-4, ground0 + .1, CH.off - .6);
+    for (const s of [-.9, .9]) { const tube = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 7, 10), new THREE.MeshLambertMaterial({ color: '#c9ccd0' })); tube.rotation.z = Math.PI / 2; tube.position.set(0, 0, s); pont.add(tube); }
+    const pdeck = new THREE.Mesh(new THREE.BoxGeometry(7, .12, 2.5), new THREE.MeshLambertMaterial({ color: '#6d6a63' })); pdeck.position.y = .35; pont.add(pdeck);
+    const fence = new THREE.Mesh(new THREE.BoxGeometry(6.6, .8, 2.3), new THREE.MeshLambertMaterial({ color: '#e2e2de', transparent: true, opacity: .55 })); fence.position.y = .8; pont.add(fence);
+    const bimini = new THREE.Mesh(new THREE.BoxGeometry(4, .06, 2.3), new THREE.MeshLambertMaterial({ color: '#1f4e79' })); bimini.position.y = 2.2; pont.add(bimini);
+    g.add(pont);
+    for (const [kx, kc] of [[5, '#e8b23a'], [6.2, '#d0452f'], [7.4, '#2f8f6f']]) { const k = new THREE.Mesh(new THREE.CapsuleGeometry(.3, 3.1, 4, 8), new THREE.MeshLambertMaterial({ color: kc })); k.rotation.z = Math.PI / 2; k.scale.set(.45, 1, 1); k.position.set(kx, ground0 + .12, CH.off - CH.w / 2 + 1.2 + (kx - 5) * .8); g.add(k); }
     const flag = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 8, 6), trim); flag.position.set(-5.5, y + 4, 4); g.add(flag);
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     this.g.scene.add(g); return true;

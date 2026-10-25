@@ -93,7 +93,7 @@ order; the scheduled-task tool was denied by the permission system), so the firs
   with real heights: Ocean 218 m, Hard Rock, MGM Tower, Bally's, Claridge, Caesars' Centurion/Ocean towers); the
   Boardwalk drawn 18 m wide in planks; a MATES monument sign at the school's road; the Sedge Island house (no dataset
   has it: hand-built, cedar on pilings with a porch, dock and kayaks, placed on the nearest dry ground to the "Sedge
-  Islands" label: its exact spot and look are approximate; ask Dan / check aerials).
+  Islands" label: matched to the NJDEP photo Dan picked on 25 Oct: main house, two porta-potties beside it, a narrow channel cut through the marsh where the boats dock (Sedge Shuttle pontoon + kayaks); the exact spot is still approximate).
 - **Water fixes** (bake.py): islands stay land (multipolygon holes + place=island polygons), and the ocean, which OSM
   has no polygon for and 3DEP has no data for (stored as exactly 0), becomes sea.
 
