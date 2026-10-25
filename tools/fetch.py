@@ -2,11 +2,15 @@
 import sys, os, json, gzip, time, io, math
 import requests, numpy as np
 OUT = sys.argv[1]; os.makedirs(OUT, exist_ok=True)
+_log = open(os.path.join(OUT, "fetch-log.txt"), "a")
+_print = print
+def print(*a, **k):
+    _print(*a, **k); _log.write(" ".join(str(x) for x in a) + "\n"); _log.flush()
 EPS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter",
        "https://overpass.private.coffee/api/interpreter"]
 UA = {"User-Agent": "brick-sim/0.1 (github.com/hinermandanny-dev/brick-sim)"}
 def op(q, name):
-    for attempt in range(8):
+    for attempt in range(6):
         ep = EPS[attempt % len(EPS)]
         try:
             r = requests.post(ep, data={"data": q}, headers=UA, timeout=900)
@@ -14,11 +18,11 @@ def op(q, name):
                 j = r.json()
                 print(f"{name}: {len(j.get('elements', []))} elements via {ep.split('/')[2]}", flush=True)
                 return j
-            print(f"{name}: HTTP {r.status_code} via {ep.split('/')[2]}, retry", flush=True)
+            print(f"{name}: HTTP {r.status_code} via {ep.split('/')[2]}: {r.text[:200]!r}", flush=True)
         except Exception as e:
             print(f"{name}: {type(e).__name__}, retry", flush=True)
-        time.sleep(20 + attempt * 15)
-    raise SystemExit(f"{name} failed")
+        time.sleep(15 + attempt * 10)
+    print(f"{name} FAILED"); return None
 def save(name, j):
     with gzip.open(os.path.join(OUT, name + ".json.gz"), "wt", encoding="utf-8") as f:
         json.dump(j, f, separators=(",", ":"))
@@ -38,18 +42,31 @@ S, N, W, E = min(lats) - pad, max(lats) + pad, min(lons) - pad, max(lons) + pad
 bbox = f"{S:.5f},{W:.5f},{N:.5f},{E:.5f}"
 json.dump({"S": S, "N": N, "W": W, "E": E}, open(os.path.join(OUT, "bbox.json"), "w"))
 print("bbox", bbox, flush=True)
-H = f"[out:json][timeout:900][maxsize:2000000000][bbox:{bbox}];"
+def quads(n):
+    out = []
+    for a in range(n):
+        for b in range(n):
+            s_ = S + (N - S) * a / n; n_ = S + (N - S) * (a + 1) / n; w_ = W + (E - W) * b / n; e_ = W + (E - W) * (b + 1) / n
+            out.append(f"{s_:.5f},{w_:.5f},{n_:.5f},{e_:.5f}")
+    return out
 Q = {
-  "highways": H + 'way["highway"];out geom;',
-  "buildings": H + '(way["building"];rel["building"];way["building:part"];);out geom;',
-  "areas": H + '(way["landuse"];rel["landuse"];way["natural"];rel["natural"];way["leisure"];rel["leisure"];way["amenity"];rel["amenity"];way["waterway"];way["water"];rel["water"];way["man_made"];way["place"];way["parking"];way["surface"]["area"="yes"];way["area:highway"];way["shop"];way["tourism"];);out geom;',
-  "lines": H + '(way["barrier"];way["railway"];way["power"];way["bridge"];way["natural"="coastline"];way["boundary"="administrative"];);out geom;',
-  "nodes": H + '(node["natural"];node["highway"];node["amenity"];node["shop"];node["barrier"];node["man_made"];node["power"];node["leisure"];node["tourism"];node["entrance"];node["emergency"];node["advertising"];node["street_lamp"];node["traffic_sign"];node["crossing"];node["public_transport"];node["railway"];node["place"];node["building"];node["office"];node["craft"];node["healthcare"];);out body;',
-  "addr": H + '(node["addr:housenumber"];way["addr:housenumber"];);out center tags;',
-  "rels": H + '(rel["type"="multipolygon"];rel["type"="route"]["route"~"bus|bicycle"];);out geom;',
+  "highways": ('way["highway"];out geom;', 2),
+  "buildings": ('(way["building"];rel["building"];way["building:part"];);out geom;', 3),
+  "areas": ('(way["landuse"];rel["landuse"];way["natural"];rel["natural"];way["leisure"];rel["leisure"];way["amenity"];rel["amenity"];way["waterway"];way["water"];rel["water"];way["man_made"];way["place"];way["area:highway"];way["shop"];way["tourism"];);out geom;', 2),
+  "lines": ('(way["barrier"];way["railway"];way["power"];way["natural"="coastline"];);out geom;', 2),
+  "nodes": ('(node["natural"];node["highway"];node["amenity"];node["shop"];node["barrier"];node["man_made"];node["power"];node["leisure"];node["tourism"];node["entrance"];node["emergency"];node["advertising"];node["traffic_sign"];node["public_transport"];node["railway"];node["place"];node["office"];node["craft"];node["healthcare"];);out body;', 2),
+  "addr": ('(node["addr:housenumber"];way["addr:housenumber"];);out center tags;', 2),
+  "rels": ('(rel["type"="multipolygon"];rel["type"="route"]["route"~"bus|bicycle"];);out geom;', 1),
+  "restr": ('rel["type"="restriction"];out body;', 1),
 }
-for k, q in Q.items():
-    save(k, op(q, k)); time.sleep(10)
+for k, (q, n) in Q.items():
+    seen = {}; ok = True
+    for qb in quads(n):
+        j = op(f"[out:json][timeout:300][maxsize:1073741824][bbox:{qb}];" + q, f"{k}[{qb}]")
+        if j is None: ok = False; continue
+        for el in j.get("elements", []): seen[(el["type"], el["id"])] = el
+        time.sleep(4)
+    save(k, {"elements": list(seen.values())}); print(k, "total", len(seen), "complete" if ok else "PARTIAL")
 
 # 2. elevation: USGS 3DEP exportImage (float32 tiff), tiled
 def dem_usgs():
