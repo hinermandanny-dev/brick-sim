@@ -74,6 +74,38 @@ heights, roads, lanes and signs come from the data, never invented where data ex
   grocery, where the OGP room is, aisle numbers).
 - Everything free (OSM, USGS, GitHub free tier). Everything off his PC where possible (Actions do the data work).
 
+## New Jersey: what exists (25 Oct, ~05:20 ET, same night session)
+The separate session could not be started automatically (the brain commander rightly refused an unverifiable bus
+order; the scheduled-task tool was denied by the permission system), so the first NJ steps were done in the Brick session.
+- **Regions.** `site/regions.json` lists them; each region is baked exactly like Brick into `site/regions/<id>/` from
+  branch `data-<id>` (fetch with `fetch-pbf.yml` inputs `region` + `bbox "S W N E"`; the site workflow bakes every
+  `data-*` branch it knows: edit the `for r in ac mates ibsp` loop when you add one, and add the region to regions.json).
+  Live: `brick` (data/), `ac` Atlantic City (39.340-39.392 N, 74.475-74.398 W), `mates` Manahawkin/Stafford
+  (39.672-39.728, 74.320-74.215), `ibsp` Island Beach SP + Sedge Islands (39.760-39.845, 74.125-74.065).
+  Open one directly with `?region=ac`.
+- **Travel** (`js/travel.js`): map (M) -> "Drive somewhere else in NJ" -> a time-lapse along the real route (GSP, Rt 37,
+  Rt 35; real miles and minutes; the game clock advances) -> you arrive in your car on the nearest road. The outfit and
+  the clock carry over (sessionStorage). The scooter stays home.
+- **The family car** (`player.js` drive/enterCar/makeCar): F at the driver's door (left side), W gas, S brake then
+  reverse, Space horn, V driver's-seat / chase camera. ~140 kW, 1,550 kg, drag, rolling resistance by surface,
+  bicycle steering with speed-dependent lock, crashes on buildings/cars. It parks nose-in in your driveway at home.
+- **Set pieces** (`js/setpieces.js`): CAESARS and RESORTS signs on the real casino buildings (AC towers come from OSM
+  with real heights: Ocean 218 m, Hard Rock, MGM Tower, Bally's, Claridge, Caesars' Centurion/Ocean towers); the
+  Boardwalk drawn 18 m wide in planks; a MATES monument sign at the school's road; the Sedge Island house (no dataset
+  has it: hand-built, cedar on pilings with a porch, dock and kayaks, placed on the nearest dry ground to the "Sedge
+  Islands" label: its exact spot and look are approximate; ask Dan / check aerials).
+- **Water fixes** (bake.py): islands stay land (multipolygon holes + place=island polygons), and the ocean, which OSM
+  has no polygon for and 3DEP has no data for (stored as exactly 0), becomes sea.
+
+### NJ: what is left, in order
+1. A statewide road skeleton (motorway/trunk/primary from the NJ extract, simplified) so you can actually DRIVE between
+   regions on the Parkway with traffic and a time-compression control, instead of only the time-lapse.
+2. More regions (each is one fetch-pbf dispatch + a regions.json line): Point Pleasant / Jenkinson's, Seaside Heights,
+   Toms River, Lakewood, the rest of Ocean County; then by county.
+3. AC detail: casino podiums, the Boardwalk's shops, Steel Pier, the beach and ocean.
+4. MATES: the building front, the marine lab, the bus loop.
+5. The check should cover every region (named places per region must resolve).
+
 ## Credentials for a headless session (brain VM)
 The brain's launch environment has `MIRROR_TOKEN` (a classic PAT with repo+workflow scope): it can push this repo and
 dispatch its workflows: `git clone https://x-access-token:$MIRROR_TOKEN@github.com/hinermandanny-dev/brick-sim.git`.
