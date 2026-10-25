@@ -9,7 +9,9 @@ mirror, and work an online-grocery-pickup shift at the Route 88 Walmart on your 
 | key | what |
 |---|---|
 | WASD / mouse | move / look |
-| F | get on / off the scooter |
+| F | get on / off the scooter · get in / out of the car (driver's door, left side) |
+| W / S in the car | gas / brake, then reverse · Space horn |
+| M → "Drive somewhere else in NJ" | Atlantic City, MATES, Sedge Island / Island Beach (`?region=ac`, `mates`, `ibsp`) |
 | Space | kick off (the motor engages at 3 km/h) / jump |
 | Shift or S | brake (riding) / run (walking) |
 | 1 2 3 | Eco / Drive / Sport |
