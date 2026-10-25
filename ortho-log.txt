@@ -1,0 +1,3 @@
+ortho z 17 tiles 44 x 69 = 3036
+ortho tiles got 3036 missing 0
+ortho.jpg 10400 x 16000 44110 KB
