@@ -18,8 +18,12 @@ heights, roads, lanes and signs come from the data, never invented where data ex
 - Dan's copy: `C:\Users\hiner\Downloads\Projects\brick-sim` (Syncthing'd). Double-click `PLAY.cmd` (needs Node, which he has).
 - `local/home.json` (git-ignored, never pushed): `{"addr":"172 Taft Ave"}`. The public site has no home in it; you can
   set one in game with **B**. Do not put the address anywhere public (repo, Actions logs, Pages).
-- Branch `data`: raw OSM + DEM, written by `.github/workflows/fetch.yml` (`tools/fetch.py`). Logs land in `fetch-log.txt`
-  on that branch, because Actions logs are not readable from Dan's network.
+- Branch `data`: raw inputs, written by `.github/workflows/fetch-pbf.yml`: the Geofabrik New Jersey extract (164 MB .pbf)
+  cut to the box with pyosmium (`tools/fetch_pbf.py`), USGS 3DEP elevation (`tools/fetch.py --dem-only`, 4000 px grid,
+  kept under GitHub's 100 MB file limit), NJ statewide address points (NJOGIS ArcGIS service, 62,976 in the box) and
+  Microsoft US building footprints (55,836; 49,673 added where OSM has no building) (`tools/fetch_extra.py`).
+  `fetch.yml` (Overpass) is a manual fallback only: Overpass returns 504 on big queries from GitHub runners.
+  Logs land in `fetch-log.txt` / `stderr.txt` on that branch, because Actions logs are not readable from Dan's network.
 - `tools/bake.py RAW OUT` turns raw data into `site/data/` (400 m tiles, `roads.json` graph, `addr.json`, `meta.json`).
   `.github/workflows/site.yml` bakes and deploys Pages after every fetch and every push to `site/`.
 - `tools/check.mjs site`: JS syntax, imports, no private file in site/, data sanity (tiles, roads, Walmart footprint,
@@ -45,6 +49,19 @@ heights, roads, lanes and signs come from the data, never invented where data ex
 | sky.js | real sun position for Brick (lat 40.06), equation of time, DST; fog, stars |
 | audio.js | WebAudio synth: motor, wind, tyres, traffic, horns, beeps, birds, crickets |
 
+## State at the end of the 25 Oct night session
+- Live on Pages with real Brick: 20,784 road edges, 560 turn restrictions, 56,468 buildings, 64,206 addresses, 917 named
+  places, 1,079 bus-route ways, 242k trees; `tools/check.mjs` green (it fails if BMHS, BTHS, VMMS, Lake Riviera MS,
+  Midstreams Elementary or Walmart stop resolving).
+- 172 Taft Ave resolves exactly from the NJ address points; the house there (Microsoft footprint) is enterable.
+- Walmart: OSM has loading docks on the SW side, so the store faces NE onto its main lot (verified in a screenshot).
+- Traffic soak on the real network around Route 88 (300 s simulated, 95 cars): no car waits on a red more than 100 s,
+  no gridlock; queues build at the Route 88 signals at 5 pm as they should.
+- Headless testing: Chromium + SwiftShader runs ~2 fps, so step the sim inside `page.evaluate` (call
+  `game.traffic.update(.05, ...)` in a loop after `await game.world.loadAround(x, z, r)`), and take screenshots with
+  `?low` at 960x540. Place the player BEFORE loading tiles or the loop's `world.update` drops them.
+- Not found anywhere: "Frede park" (no OSM name like it; ask Dan), the store's real floor plan (ask Dan).
+
 ## Standing rulings from Dan (25 Oct)
 - Stylized/blocky but "not overwhelmingly fake"; accuracy to real life is the point. Take the nitty gritty seriously.
 - Traffic must be "genuinely amazing". He wants to be blown away by accuracy.
@@ -57,15 +74,20 @@ heights, roads, lanes and signs come from the data, never invented where data ex
   grocery, where the OGP room is, aisle numbers).
 - Everything free (OSM, USGS, GitHub free tier). Everything off his PC where possible (Actions do the data work).
 
+## Credentials for a headless session (brain VM)
+The brain's launch environment has `MIRROR_TOKEN` (a classic PAT with repo+workflow scope): it can push this repo and
+dispatch its workflows: `git clone https://x-access-token:$MIRROR_TOKEN@github.com/hinermandanny-dev/brick-sim.git`.
+Never print it. `GH_TOKEN` there is fine-grained and can NOT write this repo.
+
 ## NEXT SESSION (started automatically): New Jersey
 Dan's words: "extend the project from brick to the entirety of nj. With mechanics of travel everywhere, notable
 locations are MATES, resorts and caesars in AC. Obviously add a car and a way to get from place to place that doesn't
 take an hour. More locations: BMHS, VMMS, Midstreams school. Sedge island with the building on it."
 Plan:
-1. Data at state scale: Overpass cannot return all of NJ in one query. Fetch by county (21 counties) or a 0.1° grid in the
-   fetch workflow (matrix job, one job per county, each writing to the data branch under `nj/<county>/`), or use the
-   Geofabrik NJ extract (`new-jersey-latest.osm.pbf`, ~400 MB) with `osmium` on the runner (faster, one download).
-   Elevation: USGS 3DEP at 10 m statewide is enough outside towns.
+1. Data at state scale: `fetch-pbf.yml` already reads the whole NJ extract; it takes an optional `bbox` input. Make a
+   matrix job (one job per county or per 0.25° cell) that runs `fetch_pbf.py` + DEM + extras per cell and commits to the
+   data branch under `cells/<id>/` (keep every file < 100 MB; the Microsoft NJ zip downloads once per job, so cache it
+   with actions/cache). Elevation outside towns: 10 m is enough.
 2. Coordinates: switch from one local origin to a statewide frame (NJ State Plane / EPSG:3424 or keep equirectangular per
    region with re-centering) so float precision stays fine; tile names become `z/x/y`.
 3. LOD: towns at full detail near you; far tiles only roads + building blocks; highways (GSP, Turnpike, I-195, Rt 9,
