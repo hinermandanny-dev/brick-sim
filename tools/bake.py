@@ -432,15 +432,11 @@ for i in range(int(gx0 / TS), int(gx1 / TS)):
 # ---------------- write tiles ----------------
 n = int(TS / DS) + 1
 for (i, j), t in tiles.items():
-    ox = int((i * TS - gx0) / DS); oz = int((j * TS - gz0) / DS)
-    sub = np.zeros((n, n), np.float32)
-    zz = slice(max(0, oz), min(NZ, oz + n)); xx = slice(max(0, ox), min(NX, ox + n))
-    blk = G[zz, xx]; sub[:blk.shape[0], :blk.shape[1]] = blk
-    if blk.shape != (n, n):
-        sub[blk.shape[0]:, :] = sub[blk.shape[0] - 1:blk.shape[0], :] if blk.shape[0] else 0
-        sub[:, blk.shape[1]:] = sub[:, blk.shape[1] - 1:blk.shape[1]] if blk.shape[1] else 0
+    ox = int(round((i * TS - gx0) / DS)); oz = int(round((j * TS - gz0) / DS))
+    rows = np.clip(oz + np.arange(n), 0, NZ - 1); cols = np.clip(ox + np.arange(n), 0, NX - 1)  # edge tiles repeat the border
+    sub = G[np.ix_(rows, cols)]
     t["dem"] = base64.b64encode(np.round(sub * 10).astype("<i2").tobytes()).decode()
-    t["water"] = 1 if wm[zz, xx].any() else 0
+    t["water"] = 1 if wm[np.ix_(rows, cols)].any() else 0
     with open(os.path.join(OUT, "tiles", f"{i}_{j}.json"), "w") as f:
         json.dump(t, f, separators=(",", ":"))
 # ---------------- addresses (public OSM data; used to find a home by street address) ----------------
