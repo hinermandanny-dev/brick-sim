@@ -28,7 +28,7 @@ def save(name, j):
         json.dump(j, f, separators=(",", ":"))
 
 # 1. boundary -> bbox
-b = op('[out:json][timeout:180];rel["boundary"="administrative"]["admin_level"="8"]["name"~"^Brick( Township)?$"](39.9,-74.3,40.2,-73.9);out geom;', "boundary")
+b = op('[out:json][timeout:180];rel["boundary"="administrative"]["admin_level"="8"]["name"~"^Brick( Township)?$"](39.9,-74.3,40.2,-73.9);out geom;', "boundary") or {"elements": []}
 save("boundary", b)
 lats, lons = [], []
 for el in b["elements"]:
