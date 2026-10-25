@@ -11,6 +11,7 @@ const LOAD_R = 950, DROP_R = 1350;
 const vc = (o = {}) => new THREE.MeshLambertMaterial({ vertexColors: true, ...o });
 export const MAT = {};
 function initMats() {
+  initLamp();
   MAT.vc = vc();
   MAT.vcFlat = vc({ flatShading: true });
   MAT.curb = new THREE.MeshLambertMaterial({ color: '#c9c3b8' });
@@ -45,6 +46,7 @@ float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
       float st=floor(v/2.8), lv=v-st*2.8; float n=floor((L-1.6)/3.1); float off=(L-n*3.1)*.5;
       float uu=u-off; float i=floor(uu/3.1); float lu=uu-i*3.1;
       if(n>=1. && i>=0. && i<n && lv>.9 && lv<2.1 && lu>1.1 && lu<2.0){ win=1.; frm=step(lv,.96)+step(2.04,lv)+step(lu,1.16)+step(1.94,lu)+step(abs(lu-1.55),.03); cell=vec2(i,st);}
+      else if(k>1.2 && n>=1. && i>=0. && i<n && lv>.9 && lv<2.1 && ((lu>.78 && lu<1.08)||(lu>2.02 && lu<2.32))){ diffuseColor.rgb = vec3(.16,.2,.24) + .04*step(.5,fract(lv*6.)); } // shutters
     } else if(k<2.5){ // shop: storefront glass ground floor + upper windows
       if(v>.45 && v<2.9 && L>5.){ float lu=mod(u,1.6); win=1.; frm=step(lu,.08)+step(2.84,v)+step(v,.5); cell=vec2(floor(u/1.6),0.);}
       else if(v>3.6){ float st=floor((v-3.6)/3.2), lv=v-3.6-st*3.2; float lu=mod(u,2.6); if(lv>.8&&lv<2.3&&lu>.6&&lu<2.){win=1.;cell=vec2(floor(u/2.6),st+1.);} }
@@ -67,6 +69,17 @@ float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
 }
 MAT.uNight = { value: 0 };
 
+// ----- street lights (shared; brightness follows the night factor) -----
+export const LAMP = {};
+function initLamp() {
+  LAMP.headGeo = new THREE.BoxGeometry(.38, .16, .75);
+  LAMP.headMat = new THREE.MeshBasicMaterial({ color: '#7d7a72' });
+  LAMP.armGeo = (() => { const g = new THREE.BoxGeometry(.07, .07, 1); g.translate(0, 0, .5); const c = []; for (let i = 0; i < g.attributes.position.count; i++) c.push(.55, .57, .58); g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); return g; })();
+  LAMP.poolGeo = new THREE.CircleGeometry(8, 20).rotateX(-Math.PI / 2);
+  const tex = canvasTex(128, 128, (g) => { const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,200,130,.85)'); gr.addColorStop(.5, 'rgba(255,190,120,.35)'); gr.addColorStop(1, 'rgba(255,180,110,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }, { clamp: true });
+  LAMP.poolMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -4 });
+  LAMP.set = (night) => { const on = night > .5; LAMP.poolMat.opacity = on ? .55 : 0; LAMP.poolMat.visible = on; LAMP.headMat.color.set(on ? '#ffd59a' : '#7d7a72'); };
+}
 // ----- road textures (markings) -----
 const rtCache = new Map();
 export function roadTex(key, way) {
@@ -132,14 +145,15 @@ export class World {
     this.home = null;
   }
   key(x, z) { return Math.floor(x / TS) + '_' + Math.floor(z / TS); }
+  // ground height from the global 8 m grid (loaded at boot), so a building that straddles a tile edge never
+  // samples an unloaded neighbour (that buried the Walmart under the terrain on 25 Oct)
   height(x, z) {
-    const i = Math.floor(x / TS), j = Math.floor(z / TS);
-    const t = this.tiles.get(i + '_' + j);
-    if (!t || !t.dem) return 0.4;
-    const fx = (x - i * TS) / DS, fz = (z - j * TS) / DS;
-    const x0 = Math.min(DN - 2, Math.floor(fx)), z0 = Math.min(DN - 2, Math.floor(fz));
-    const tx = fx - x0, tz = fz - z0, d = t.dem;
-    const a = d[z0 * DN + x0], b = d[z0 * DN + x0 + 1], c = d[(z0 + 1) * DN + x0], e = d[(z0 + 1) * DN + x0 + 1];
+    const g = this.dem, M = this.meta;
+    if (!g) return 0.4;
+    const fx = (x - M.gx0) / DS, fz = (z - M.gz0) / DS, NX = M.demNX, NZ = M.demNZ;
+    const x0 = Math.max(0, Math.min(NX - 2, Math.floor(fx))), z0 = Math.max(0, Math.min(NZ - 2, Math.floor(fz)));
+    const tx = Math.max(0, Math.min(1, fx - x0)), tz = Math.max(0, Math.min(1, fz - z0));
+    const a = g[z0 * NX + x0], b = g[z0 * NX + x0 + 1], c = g[(z0 + 1) * NX + x0], e = g[(z0 + 1) * NX + x0 + 1];
     return ((a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + e * tx) * tz) / 10;
   }
   ready(x, z) { return this.tiles.has(this.key(x, z)); }
@@ -370,7 +384,7 @@ export class World {
       const r = rng(b.id * 2654435761 >>> 0);
       const res = b.k === 'res', small = b.k === 'small';
       const big = (maxx - minx) * (maxz - minz) > 6000;
-      const kindCode = res || small ? 1 : big ? 3 : ['school', 'office', 'apartments', 'hospital', 'university', 'college', 'hotel', 'public', 'civic'].includes(b.k) ? 4 : 2;
+      const kindCode = res || small ? (r() < .45 ? 1.3 : 1) : big ? 3 : ['school', 'office', 'apartments', 'hospital', 'university', 'college', 'hotel', 'public', 'civic'].includes(b.k) ? 4 : 2;
       const wallCol = new THREE.Color(res ? SIDING[(r() * SIDING.length) | 0] : big ? '#cfc8b8' : b.k === 'church' ? BRICKS[(r() * 4) | 0] : (r() < .35 ? BRICKS[(r() * 4) | 0] : ['#d8d0bf', '#c7bfae', '#e2dccf', '#b9b2a4', '#a8a091'][(r() * 5) | 0]));
       if (b.n && /walmart/i.test(b.n)) wallCol.set('#c9c6bd');
       const found = res ? 0.45 : 0.15, base = ymin - 0.3, eave = ymin + found + b.h;
@@ -504,7 +518,28 @@ export class World {
       if (h.b.h < 4 && wl > 11 && h.r > .35) det.box(sx + dx * .07, fy + 1.1, sz + dz * .07, width * .78, 2.2, .1, gar, Math.atan2(wx, wz) + Math.PI / 2);
       h.door = { x: dxp, z: dzp, ox: dx, oz: dz, wx, wz, y: fy };
       h.drive = { sx, sz, ex, ez, width, yaw };
+      // foundation plantings along the front wall (mulch bed + clipped shrubs), skipping the door and the driveway
+      const shrubCol = new THREE.Color('#4f6e34'), mulch = new THREE.Color('#5a3e2b');
+      for (let u = .8; u < wl - .8; u += 1.3) {
+        const px2 = best.ax + wx * u + dx * .9, pz2 = best.az + wz * u + dz * .9;
+        if (Math.hypot(px2 - dxp, pz2 - dzp) < 1.3 || Math.hypot(px2 - sx, pz2 - sz) < width / 2 + .6) continue;
+        const sh = .55 + hash((px2 * 97) ^ (pz2 * 31)) * .5; const yy = this.height(px2, pz2);
+        det.box(px2, yy + .03, pz2, 1.3, .06, 1.2, mulch, Math.atan2(wx, wz));
+        det.box(px2, yy + sh / 2, pz2, .85, sh, .8, shrubCol.clone().multiplyScalar(.85 + hash(u * 7) * .3), Math.atan2(wx, wz) + hash(u) * .4);
+      }
       recs.push({ sx, sz, ex, ez, yaw, width, len, house: h, mail: [mx, mz], addr: h.b.a || '', car: h.r < .62 });
+    }
+    // above-ground pools (OSM swimming_pool areas in back yards are almost all the round above-ground kind here)
+    for (const a of t.d.areas) {
+      if (a.k !== 'pool') continue;
+      const P = []; for (let q = 0; q < a.p.length; q += 2) P.push(a.p[q] / 10, a.p[q + 1] / 10);
+      const ar = Math.abs(polyArea(P)); if (ar > 80 || ar < 8) continue;
+      let cx = 0, cz = 0; for (let q = 0; q < P.length; q += 2) { cx += P[q]; cz += P[q + 1]; } cx /= P.length / 2; cz /= P.length / 2;
+      const rad = Math.sqrt(ar / Math.PI), y = this.height(cx, cz);
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, 1.25, 20, 1, true), new THREE.MeshLambertMaterial({ color: '#d9dcd8', side: THREE.DoubleSide })); wall.position.set(cx, y + .62, cz); wall.material._own = true;
+      const water = new THREE.Mesh(new THREE.CircleGeometry(rad - .05, 20).rotateX(-Math.PI / 2), MAT.water); water.position.set(cx, y + 1.08, cz);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(rad, .07, 4, 24).rotateX(Math.PI / 2), MAT.white); rim.position.set(cx, y + 1.25, cz);
+      t.g.add(wall, water, rim);
     }
     if (dw.count) { const m = new THREE.Mesh(dw.build(), MAT.driveway); m.receiveShadow = true; t.g.add(m); }
     if (det.count) { const m = new THREE.Mesh(det.build(), MAT.vc); m.castShadow = true; t.g.add(m); }
@@ -541,6 +576,21 @@ export class World {
         t.props.push({ k, x, z, yaw, name: pr[3] });
       });
       im.castShadow = true; t.g.add(im);
+    }
+    // street lights: mapped lamps plus the cobra-heads that sit on about a third of the utility poles
+    const lamps = [];
+    for (const o of t.props) { if (o.k === 'lamp') lamps.push([o.x + Math.sin(o.yaw) * 0 + Math.cos(o.yaw) * 0, o.z, o.yaw, 8.3, 2.1]); else if (o.k === 'pole' && hash((o.x * 991) ^ (o.z * 313)) < .38) lamps.push([o.x, o.z, o.yaw, 9.2, 1.6]); }
+    if (lamps.length) {
+      const heads = new THREE.InstancedMesh(LAMP.headGeo, LAMP.headMat, lamps.length), pools = new THREE.InstancedMesh(LAMP.poolGeo, LAMP.poolMat, lamps.length), arms = new THREE.InstancedMesh(LAMP.armGeo, MAT.vcFlat, lamps.length);
+      lamps.forEach(([x, z, yaw, hgt, reach], i) => {
+        // arm points towards the road: the nearest road centre
+        const n = this.roads.nearest(x, z, 30); let ax = 0, az = 1; if (n) { const L = Math.hypot(n.qx - x, n.qz - z) || 1; ax = (n.qx - x) / L; az = (n.qz - z) / L; }
+        const y = this.height(x, z); const hx = x + ax * reach, hz = z + az * reach; const ya = Math.atan2(ax, az);
+        q.setFromAxisAngle(Y, ya); p.set(hx, y + hgt, hz); heads.setMatrixAt(i, m4.compose(p, q, s));
+        p.set(x, y + hgt + .1, z); arms.setMatrixAt(i, m4.compose(p, q, new THREE.Vector3(1, 1, reach)));
+        p.set(hx, this.height(hx, hz) + .09, hz); pools.setMatrixAt(i, m4.compose(p, q.identity(), s));
+      });
+      pools.renderOrder = 2; t.g.add(heads, pools, arms); t.lamps = lamps;
     }
   }
   buildLines(t) {

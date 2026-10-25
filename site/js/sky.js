@@ -36,7 +36,7 @@ export class Sky {
     const warm = clamp(1 - Math.abs(el * 180 / Math.PI - 4) / 10, 0, 1);
     this.sun.intensity = 2.4 * clamp(el * 180 / Math.PI / 8, 0, 1);
     this.sun.color.setRGB(1, lerp(.95, .72, warm), lerp(.86, .5, warm));
-    this.hemi.intensity = lerp(.12, .9, day);
+    this.hemi.intensity = lerp(.32, .9, day); // moonlit suburb, not a black void
     this.hemi.color.setRGB(lerp(.35, .88, day), lerp(.42, .91, day), lerp(.62, .94, day));
     const top = new THREE.Color().setRGB(lerp(.02, .43, day), lerp(.04, .64, day), lerp(.1, .82, day));
     const bot = new THREE.Color().setRGB(lerp(.06, .87, day) + warm * .15, lerp(.07, .88, day) + warm * .05, lerp(.12, .9, day) - warm * .1);

@@ -180,8 +180,11 @@ export class Traffic {
       const dir = dirs[(r() * dirs.length) | 0]; const s = dir ? e.len - h.s : h.s;
       const lanes = R.lanes(e, dir); const li = (r() * lanes) | 0;
       if (this.cars.some(c => c.e === e && c.dir === dir && Math.abs(c.s - s) < 18)) continue;
-      const mi = pickModel(r(), e.cls >= 4);
-      this.addCar(e, dir, s, li, mi);
+      let mi = pickModel(r(), e.cls >= 4);
+      const hh = this.time % 24, bell = (hh > 6.8 && hh < 8.4) || (hh > 14 && hh < 15.7);
+      if (e.way.bus && r() < .22) mi = 6;                      // NJ Transit on its real route
+      else if (bell && e.cls >= 3 && r() < .07) mi = 7;         // school buses at bell times
+      const car = this.addCar(e, dir, s, li, mi); if (mi === 6) car.route = e.way.bus;
       return true;
     }
     return false;
@@ -191,7 +194,7 @@ export class Traffic {
     const agg = r();
     const c = {
       id: (r() * 1e9) | 0, e, dir, s, li, lat: laneOff(e.way, dir, li), latT: 0, mi, M,
-      v: 0, a: 0, col: new THREE.Color(CARCOL[(r() * CARCOL.length) | 0]),
+      v: 0, a: 0, col: new THREE.Color(M.white ? '#ffffff' : M.name === 'bus' ? '#ffffff' : CARCOL[(r() * CARCOL.length) | 0]),
       // driver: NJ-flavoured, most go a little over, some a lot
       f: .96 + agg * .2 + (r() < .08 ? .12 : 0), A: 1.5 + agg * 1.1, B: 2.6 + r() * .8, T: 1.55 - agg * .5, S0: 2 + r(),
       conn: null, cs: 0, next: null, stopT: 0, waitNode: -1, waitGrp: 0, blink: 0, brake: 0, lc: 0, honk: 0, arrive: 0,
@@ -210,6 +213,7 @@ export class Traffic {
     let tot = 0; const w = opts.map(m => {
       const k = R.turnKind(m.turn); let x = k === 'S' ? 3 : k === 'R' ? 1.2 : k === 'L' ? 1 : .1;
       if (m.e.way.n && m.e.way.n === c.e.way.n) x *= 2.5;
+      if (c.route) x *= m.e.way.bus === c.route ? 40 : .05;   // buses keep to their route
       x *= m.e.cls >= c.e.cls ? 1.4 : m.e.cls >= 3 ? .8 : .15;
       if (m.e.way.sv === 'driveway') x *= .02; if (m.e.way.sv === 'parking_aisle' || m.e.way.t === 'service') x *= .25;
       const far = R.nodes[m.dir === 0 ? m.e.b : m.e.a]; if (far.deg === 1) x *= .15;
@@ -264,6 +268,12 @@ export class Traffic {
       for (const o of l2) { if (o.conn) continue; const g = rem + o.s - (o.M.L + c.M.L) / 2; if (g < best && Math.abs(o.lat - laneOff(c.next.e.way, c.next.dir, c.next.li)) < 2.2) { best = g; bv = o.v; bc = o; } }
       const l3 = this.lanes.get('n' + c.next.e.i + ':' + c.next.dir) || [];
       for (const o of l3) if (o !== c && o.conn === c.conn && o.cs > c.cs) { const g = o.cs - c.cs - (o.M.L + c.M.L) / 2; if (g < best) { best = g; bv = o.v; bc = o; } }
+    }
+    // people walking in front of the bumper
+    if (this.peds) for (const p of this.peds) {
+      const dx = p.x - c.x, dz = p.z - c.z; if (Math.abs(dx) > 45 || Math.abs(dz) > 45) continue;
+      const ahead = dx * c.hx + dz * c.hz, side = Math.abs(-dx * c.hz + dz * c.hx);
+      if (ahead > 0 && ahead < 40 && side < c.M.Wd / 2 + .8) { const g = ahead - c.M.L / 2 - 1.2; if (g < best) { best = g; bv = 0; bc = 'ped'; } }
     }
     // the player (on foot or scooter) in front of the bumper
     if (player && !player.inside) {

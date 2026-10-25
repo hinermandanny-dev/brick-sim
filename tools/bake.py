@@ -264,6 +264,7 @@ for el in blds:
             elif kind in ("school",): h = 7.0 if a > 3000 else 4.5
             elif a > 9000: h = 8.5
             else: h = 5.0 + min(2.5, a / 2000)
+        if a > 3000 and kind not in ("res", "small") and h < 7.5: h = 7.5 + min(2.0, a / 20000)   # one-storey big boxes are still 8-9 m tall
         if not roof:
             roof = "gable" if kind in ("res",) and a < 450 else ("gable" if kind == "small" and a < 60 else "flat")
             if kind == "church": roof = "gable"
@@ -492,7 +493,8 @@ for (i, j), t in tiles.items():
     for l in t["labels"]: pois.append(l)
 for l in area_labels:
     if X0 <= l[1] / 10 <= X1 and Z0 <= l[2] / 10 <= Z1: pois.append(l)
-json.dump({"lat0": LAT0, "lon0": LON0, "kx": KX, "kz": KZ, "ts": TS, "ds": DS, "gx0": gx0, "gz0": gz0, "gx1": gx1, "gz1": gz1,
+np.round(G * 10).astype("<i2").tofile(os.path.join(OUT, "dem.bin"))   # the whole 8 m grid: heights never depend on which tiles are loaded
+json.dump({"demNX": NX, "demNZ": NZ, "lat0": LAT0, "lon0": LON0, "kx": KX, "kz": KZ, "ts": TS, "ds": DS, "gx0": gx0, "gz0": gz0, "gx1": gx1, "gz1": gz1,
            "tiles": sorted([f"{i}_{j}" for (i, j) in tiles]), "walmart": walmart, "pois": pois, "demsrc": dm.get("src")},
           open(os.path.join(OUT, "meta.json"), "w"), separators=(",", ":"))
 tot = sum(os.path.getsize(os.path.join(OUT, "tiles", f)) for f in os.listdir(os.path.join(OUT, "tiles")))

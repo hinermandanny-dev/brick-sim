@@ -139,8 +139,8 @@ export class Character {
       R(this.hipR, .12 - k * -.55 + k * .45, -.2, -.05 - k * .12); R(this.knR, .3 + k * .5); R(this.anR, .1 + k * .3);
       R(this.spine, .12 + k * .12, .25, -lean * .5); R(this.chest, .1, .15, -lean * .3);
       // arms forward and down to the bar (steer turns the shoulders)
-      R(this.shL, -.95 - steer * .3, 0, -.18); R(this.elL, -.55); R(this.waL, .2);
-      R(this.shR, -.95 + steer * .3, 0, .18); R(this.elR, -.55); R(this.waR, .2);
+      R(this.shL, -.62 - steer * .25, 0, -.2); R(this.elL, -.42); R(this.waL, .25);
+      R(this.shR, -.62 + steer * .25, 0, .2); R(this.elR, -.42); R(this.waR, .25);
       R(this.neck, (st.look || 0) * .35 - .1, -.3); R(this.head, (st.look || 0) * .45, -.1);
       hipY = .98 + .155 - .05 - k * .06; // deck height ~15.5 cm
     } else if (st.mode === 'crouch') {

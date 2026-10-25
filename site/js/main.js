@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three.module.js';
 import { Roads } from './roads.js';
-import { World, MAT } from './world.js';
+import { World, MAT, LAMP } from './world.js';
 import { Traffic } from './traffic.js';
 import { Player } from './player.js';
 import { Sky } from './sky.js';
@@ -9,6 +9,7 @@ import { Phone } from './phone.js';
 import { Store } from './store.js';
 import { Home } from './home.js';
 import { Audio } from './audio.js';
+import { Peds } from './peds.js';
 import { OUTFIT_DEFAULT } from './character.js';
 import { toast, prompt, clamp } from './util.js';
 
@@ -36,6 +37,7 @@ class Game {
     addEventListener('resize', () => { R.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); });
     this.sky = new Sky(this.scene, R);
     this.world = new World(this.scene, this.meta, this.roads);
+    this.world.dem = new Int16Array(await (await fetch('data/dem.bin')).arrayBuffer());
     this.traffic = new Traffic(this.scene, this.world, this.roads);
     this.player = new Player(this.scene, this.world, this.roads, this.traffic, this.camera, store.get('outfit', OUTFIT_DEFAULT));
     this.audio = new Audio();
@@ -43,6 +45,7 @@ class Game {
     this.store = new Store(this.scene, this.world, this.roads, this.player, this.phone);
     this.home = new Home(this.scene, this.world, this.player, store);
     this.hud = new HUD(this);
+    this.peds = new Peds(this.scene, this.world, this.roads); this.traffic.peds = this.peds.list;
     this.traffic.onHorn = (c) => { if (Math.hypot(c.x - this.player.x, c.z - this.player.z) < 40) this.audio.horn(); };
     this.store.onBeep = (ok) => this.audio.beep(ok);
     this.player.onKick = () => this.audio.kick(); this.player.onCrash = () => this.audio.thud();
@@ -90,8 +93,8 @@ class Game {
     const out = [];
     if (this.home.hx !== undefined) out.push({ name: 'Home', sub: this.home.label || '', x: this.home.hx, z: this.home.hz, col: '#d97757' });
     if (this.store.cx) out.push({ name: 'Walmart #1977', sub: '1872 Route 88 · work', x: this.store.cx, z: this.store.cz, col: '#0b4fa8' });
-    const want = [[/brick memorial high/i, 'Brick Memorial HS'], [/brick township high/i, 'Brick Township HS'], [/veterans memorial (middle|elem)/i, 'Veterans Memorial MS'], [/lake riviera middle/i, 'Lake Riviera MS'], [/midstreams/i, 'Midstreams Elementary'],
-      [/lake riviera/i, 'Lake Riviera'], [/frede|freedom park|windward beach/i, 'Park'], [/herbertsville/i, 'Herbertsville'], [/brick plaza/i, 'Brick Plaza'], [/ocean county library|brick branch/i, 'Library'], [/sedge/i, 'Sedge Island']];
+    const want = [[/township memorial high|brick memorial high/i, 'BMHS'], [/brick township high/i, 'BTHS'], [/veterans memorial middle/i, 'VMMS'], [/lake riviera middle/i, 'Lake Riviera MS'], [/midstreams elementary/i, 'Midstreams Elementary'],
+      [/lake rivi?era park/i, 'Lake Riviera park'], [/^lake riviera$/i, 'the lake'], [/midstreams park/i, 'park'], [/frede|windward beach/i, 'park'], [/herbertsville park/i, 'park'], [/brick plaza/i, 'shopping'], [/library/i, 'library'], [/sedge/i, 'Sedge Island']];
     const seen = new Set();
     for (const [re, label] of want) {
       const p = this.meta.pois.find(p => re.test(p[0]) && !seen.has(p[0])); if (!p) continue; seen.add(p[0]);
@@ -151,12 +154,13 @@ class Game {
     this.t += dt * this.timeScale;
     const hour = (this.t / 3600) % 24; const doy = Math.floor((this.dateObj() - new Date(this.dateObj().getFullYear(), 0, 0)) / 864e5);
     const sun = this.sky.update(hour, doy, this.camera);
-    MAT.uNight.value = sun.night > .45 ? 1 : 0; this.traffic.night = sun.night; this.traffic.time = hour;
+    MAT.uNight.value = sun.night > .45 ? 1 : 0; LAMP.set(sun.night); this.traffic.night = sun.night; this.traffic.time = hour;
     if (!this.hud.mapOpen) P.update(dt);
     this.world.update(P.x, P.z);
     const cd = new THREE.Vector3(); this.camera.getWorldDirection(cd);
     this.traffic.update(dt, { x: P.x, z: P.z, vx: P.vx, vz: P.vz, inside: !!P.inside }, cd);
     this.store.update(dt, hour); this.home.update(dt, sun.night); this.phone.tick(dt);
+    this.peds.update(dt, P.x, P.z, hour, this.traffic);
     if (this.charging) { P.batt = Math.min(1, P.batt + dt * this.timeScale / (4.5 * 3600)); if (P.riding || !this.home.nearCharger()) this.charging = false; }
     prompt(this.use(false));
     this.hud.update(dt);

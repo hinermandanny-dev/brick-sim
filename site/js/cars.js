@@ -92,6 +92,19 @@ function bus() { // NJ Transit-style transit bus
   for (const [x, z] of [[-1, L / 2 - 2.4], [1, L / 2 - 2.4], [-1, -L / 2 + 3.0], [1, -L / 2 + 3.0]]) parts.push(wheel(.5, .32, x * (Wd / 2 - .15), .5, z));
   return mergeGeometries(parts);
 }
+function schoolbus() { // Type C school bus, National School Bus Yellow
+  const L = 11.0, Wd = 2.45, Y = new THREE.Color('#f7b500'), parts = [];
+  parts.push(box(Wd, 2.0, L - 2.0, Y, 0, 1.95, -1.0));
+  parts.push(box(Wd - .2, 1.1, 2.0, Y, 0, 1.15, L / 2 - 1.0));
+  parts.push(box(Wd + .01, .7, L - 2.6, GL, 0, 2.35, -1.0));
+  parts.push(box(Wd + .02, .1, L - 2.0, DK, 0, 1.7, -1.0), box(Wd + .02, .1, L - 2.0, DK, 0, 1.3, -1.0));
+  parts.push(box(Wd - .3, .8, .05, GL, 0, 2.3, L / 2 - 2.0));
+  parts.push(box(.6, .45, .03, DK, -.9, 1.9, L / 2 - 2.0 + .03)); // stop arm stowed
+  parts.push(box(.4, .18, .05, HL, -Wd / 2 + .3, 1.0, L / 2 + .01), box(.4, .18, .05, HL, Wd / 2 - .3, 1.0, L / 2 + .01));
+  parts.push(box(.22, .22, .05, TL, -Wd / 2 + .2, 1.2, -L / 2 - .01), box(.22, .22, .05, TL, Wd / 2 - .2, 1.2, -L / 2 - .01));
+  for (const [x, z] of [[-1, L / 2 - 1.4], [1, L / 2 - 1.4], [-1, -L / 2 + 2.4], [1, -L / 2 + 2.4]]) parts.push(wheel(.5, .3, x * (Wd / 2 - .15), .5, z));
+  return mergeGeometries(parts);
+}
 export const MODELS = [
   { name: 'sedan', geo: () => sedan(), L: 4.85, Wd: 1.85, H: 1.45, w: 30, light: [.72, 2.42, .74, -2.43] },
   { name: 'compact', geo: () => sedan(4.4, 1.78, 1.45), L: 4.4, Wd: 1.78, H: 1.45, w: 14, light: [.72, 2.2, .74, -2.21] },
@@ -100,6 +113,7 @@ export const MODELS = [
   { name: 'minivan', geo: minivan, L: 5.15, Wd: 2.0, H: 1.8, w: 8, light: [.88, 2.57, 1.15, -2.58] },
   { name: 'boxtruck', geo: boxtruck, L: 7.6, Wd: 2.45, H: 3.4, w: 2, light: [1.0, 3.8, .9, -3.81], commercial: true },
   { name: 'bus', geo: bus, L: 12.2, Wd: 2.6, H: 3.0, w: 0, light: [1.0, 6.1, 1.0, -6.11], commercial: true },
+  { name: 'schoolbus', geo: schoolbus, L: 11.0, Wd: 2.45, H: 3.0, w: 0, light: [1.0, 5.5, 1.2, -5.51], commercial: true, white: true },
 ];
 export function pickModel(r, commercialOK = true) {
   let tot = 0; for (const m of MODELS) if (commercialOK || !m.commercial) tot += m.w;

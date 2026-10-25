@@ -64,8 +64,16 @@ export class Store {
     // front = the long side facing the bigger parking lot / Route 88 (nearest major road)
     const Wd = (u, v) => [u * c - v * s, u * s + v * c];
     const mA = Wd((u0 + u1) / 2, v0), mB = Wd((u0 + u1) / 2, v1);
-    const near = (x, z) => { const h = this.roads.nearest(x, z, 400, e => e.cls >= 6); return h ? h.d : 999; };
-    const frontIsV0 = near(...mA) <= near(...mB);
+    // the front faces the main parking lot: area-weighted centre of the parking polygons around the building
+    let px = 0, pz = 0, pw = 0;
+    for (const t of this.world.tiles.values()) for (const ar of t.d.areas) {
+      if (ar.k !== 'parking') continue; let cx2 = 0, cz2 = 0, n2 = ar.p.length / 2; for (let q = 0; q < ar.p.length; q += 2) { cx2 += ar.p[q] / 10; cz2 += ar.p[q + 1] / 10; } cx2 /= n2; cz2 /= n2;
+      if (Math.hypot(cx2 - this.cx, cz2 - this.cz) > 260) continue; let A = 0; for (let q = 0, j = ar.p.length - 2; q < ar.p.length; j = q, q += 2) A += (ar.p[j] * ar.p[q + 1] - ar.p[q] * ar.p[j + 1]) / 200; A = Math.abs(A);
+      px += cx2 * A; pz += cz2 * A; pw += A;
+    }
+    let frontIsV0;
+    if (pw > 500) { px /= pw; pz /= pw; frontIsV0 = Math.hypot(mA[0] - px, mA[1] - pz) <= Math.hypot(mB[0] - px, mB[1] - pz); }
+    else { const near = (x, z) => { const h = this.roads.nearest(x, z, 400, e => e.cls >= 5); return h ? h.d : 999; }; frontIsV0 = near(...mA) <= near(...mB); }
     // local frame: u along the front (0..L), v depth from the front wall (0..D)
     const L = u1 - u0, D = v1 - v0;
     const F = frontIsV0 ? (u, v) => Wd(u0 + u, v0 + v) : (u, v) => Wd(u1 - u, v1 - v);
