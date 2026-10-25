@@ -31,8 +31,13 @@ except Exception as ex:
     say("address points skipped", type(ex).__name__, str(ex)[:200])
 # 2. Microsoft building footprints for New Jersey (fills buildings OSM has not mapped yet)
 try:
-    url = "https://usbuildingdataset.blob.core.windows.net/usbuildings-v2/NewJersey.geojson.zip"
-    r = requests.get(url, headers=UA, timeout=600, stream=True); r.raise_for_status()
+    r = None
+    for url in ("https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/NewJersey.geojson.zip",
+                "https://usbuildingdataset.blob.core.windows.net/usbuildings-v2/NewJersey.geojson.zip"):
+        try:
+            r = requests.get(url, headers=UA, timeout=600); r.raise_for_status(); say("ms source", url.split("/")[2]); break
+        except Exception as ex: say("ms try failed", url.split("/")[2], type(ex).__name__); r = None
+    if r is None: raise RuntimeError("no Microsoft source reachable")
     buf = io.BytesIO(r.content); z = zipfile.ZipFile(buf); name = [n for n in z.namelist() if n.endswith("json")][0]
     out = []; i = 0
     with z.open(name) as fh:
