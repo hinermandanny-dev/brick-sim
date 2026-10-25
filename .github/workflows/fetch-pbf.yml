@@ -15,9 +15,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install osmium requests numpy pillow tifffile
-      - run: curl -sSL -o nj.osm.pbf https://download.geofabrik.de/north-america/us/new-jersey-latest.osm.pbf && ls -la nj.osm.pbf
-      - run: python tools/fetch_pbf.py nj.osm.pbf out ${{ inputs.bbox }}
-      - run: python tools/fetch.py out --dem-only
+      - run: mkdir -p out && curl -sSL -o nj.osm.pbf https://download.geofabrik.de/north-america/us/new-jersey-latest.osm.pbf && ls -la nj.osm.pbf | tee out/stderr.txt
+      - run: mkdir -p out && set -o pipefail && python tools/fetch_pbf.py nj.osm.pbf out ${{ inputs.bbox }} 2>&1 | tee -a out/stderr.txt
+        shell: bash
+      - run: set -o pipefail && python tools/fetch.py out --dem-only 2>&1 | tee -a out/stderr.txt
+        shell: bash
         continue-on-error: true
       - name: commit to data branch
         if: always()
