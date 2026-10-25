@@ -458,7 +458,7 @@ export class World {
       const res = b.k === 'res', small = b.k === 'small';
       const big = (maxx - minx) * (maxz - minz) > 6000;
       const kindCode = res || small ? (r() < .45 ? 1.3 : 1) : big ? 3 : ['school', 'office', 'apartments', 'hospital', 'university', 'college', 'hotel', 'public', 'civic'].includes(b.k) ? 4 : 2;
-      const wallCol = new THREE.Color(res ? SIDING[(r() * SIDING.length) | 0] : big ? '#cfc8b8' : b.k === 'church' ? BRICKS[(r() * 4) | 0] : (r() < .35 ? BRICKS[(r() * 4) | 0] : ['#d8d0bf', '#c7bfae', '#e2dccf', '#b9b2a4', '#a8a091'][(r() * 5) | 0]));
+      const wallCol = new THREE.Color(res ? (b.bf ? BRICKS[(r() * 4) | 0] : SIDING[(r() * SIDING.length) | 0]) : big ? '#cfc8b8' : b.k === 'church' ? BRICKS[(r() * 4) | 0] : (r() < .35 ? BRICKS[(r() * 4) | 0] : ['#d8d0bf', '#c7bfae', '#e2dccf', '#b9b2a4', '#a8a091'][(r() * 5) | 0]));
       if (b.n && /walmart/i.test(b.n) && b.h > 4) { cols.push({ P, minx, maxx, minz, maxz, h: b.h, top: b.h + 3, b, store: true }); continue; } // the store draws Walmart itself (with real entrances)
       // a hand-built house (local/house.json, private): replaces the generated walls and roof of Dan's own house
       if (res && this.handSpec && this.homeXZ && Math.hypot((minx + maxx) / 2 - this.homeXZ[0], (minz + maxz) / 2 - this.homeXZ[1]) < 8) {
@@ -486,7 +486,7 @@ export class World {
         u += L;
       }
       // roof
-      const roofCol = new THREE.Color(res || small || b.r === 'gable' ? ROOFS[(r() * ROOFS.length) | 0] : big ? '#d9d6cf' : '#8a8780');
+      const roofCol = new THREE.Color(b.rc && (res || small) ? '#' + b.rc : res || small || b.r === 'gable' ? ROOFS[(r() * ROOFS.length) | 0] : big ? '#d9d6cf' : '#8a8780'); // roof colour: the 2020 orthophoto's median over the footprint
       if ((b.r === 'gable' || b.r === 'hipped') && P.length <= 40) this.gableRoof(roofs, walls, P, eave, roofCol, wallCol, r, b.r === 'hipped' || (res && r() < .28));
       else this.flatRoof(roofs, P, eave, roofCol, big, r);
       cols.push({ P, minx, maxx, minz, maxz, h: eave, top: eave + 3, b });
@@ -588,7 +588,8 @@ export class World {
       const sx = best.px + wx * off, sz = best.pz + wz * off;
       const roadHalf = e.way.w / 2 + .3; const ex = qx + wx * off - dx * roadHalf, ez = qz + wz * off - dz * roadHalf;
       const len = Math.hypot(ex - sx, ez - sz); if (len < 2 || len > 50) continue;
-      const width = wl > 13 && h.r > .3 ? 5.4 : 3.3;
+      const gk = h.b.g; // MOD-IV garage count when known (bake: b.g), else the old guess
+      const width = gk !== undefined ? (gk >= 2 ? 5.4 : gk === 1 ? 3.3 : 2.8) : wl > 13 && h.r > .3 ? 5.4 : 3.3;
       { // a driveway that would run through a neighbour's house is not a driveway (audit: drive_through_other_house)
         const yw = Math.atan2(ex - sx, ez - sz); let blocked = false;
         for (let s = 1.8; s < len - .3 && !blocked; s += 1) { const f = s / len; for (const o of [-1, 0, 1]) { const px = sx + (ex - sx) * f + Math.cos(yw) * o * width * .4, pz = sz + (ez - sz) * f - Math.sin(yw) * o * width * .4; const c = this.buildingAt(px, pz); if (c && c.P !== h.P && !c.store) { blocked = true; break; } } }
@@ -618,7 +619,7 @@ export class World {
       const dxp = best.px + wx * (-off * .9) + dx * 0.06, dzp = best.pz + wz * (-off * .9) + dz * 0.06;
       det.box(dxp, fy + 1.05, dzp, .95, 2.1, .12, door, Math.atan2(wx, wz) + Math.PI / 2);
       det.box(dxp + dx * .7, fy - .05, dzp + dz * .7, 1.4, .3, 1.2, new THREE.Color('#9d978c'), Math.atan2(wx, wz) + Math.PI / 2); // stoop
-      if (h.b.h < 4 && wl > 11 && h.r > .35) det.box(sx + dx * .07, fy + 1.1, sz + dz * .07, width * .78, 2.2, .1, gar, Math.atan2(wx, wz) + Math.PI / 2);
+      if (gk !== undefined ? gk > 0 && wl > 6 : h.b.h < 4 && wl > 11 && h.r > .35) det.box(sx + dx * .07, fy + 1.1, sz + dz * .07, width * .78, 2.2, .1, gar, Math.atan2(wx, wz) + Math.PI / 2);
       h.door = { x: dxp, z: dzp, ox: dx, oz: dz, wx, wz, y: fy };
       h.drive = { sx, sz, ex, ez, width, yaw };
       // foundation plantings along the front wall (mulch bed + clipped shrubs), skipping the door and the driveway

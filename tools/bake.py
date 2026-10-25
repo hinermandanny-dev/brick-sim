@@ -417,7 +417,7 @@ print("dem grid", NX, NZ, round(float(G.min()), 1), round(float(G.max()), 1))
 # flatten under roads a touch: handled client-side by draping
 
 # ---------------- real ground cover from the 2020 orthophoto (tools/fetch_ortho.py + tools/ortho_classify.py) ----------------
-CL = None; OG = None
+CL = None; OG = None; SRC = None
 if os.path.exists(os.path.join(RAW, "ortho.jpg")):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ortho_classify as OC
     Image.MAX_IMAGE_PIXELS = None
@@ -426,13 +426,93 @@ if os.path.exists(os.path.join(RAW, "ortho.jpg")):
     for r0 in range(0, src.shape[0], 400):
         a0, a1 = max(0, r0 - M8), min(src.shape[0], r0 + 400 + M8)
         c = OC.majority(OC.classify(src[a0:a1])); CL[r0:min(src.shape[0], r0 + 400)] = c[r0 - a0:r0 - a0 + min(400, src.shape[0] - r0)]
-    del src
+    SRC = src
     os.makedirs(os.path.join(OUT, "ground"), exist_ok=True)
     print("ortho classes", {k: round(float((CL == k).mean()), 3) for k in range(8)})
 def ortho_at(x, z):
     if CL is None: return -1
     c, r = int(x - OG["gx0"]), int(z - OG["gz0"])
     return int(CL[r, c]) if 0 <= r < CL.shape[0] and 0 <= c < CL.shape[1] else -1
+
+# ---------------- per-house truth: MOD-IV parcels (storeys, garage, year, brick) + roof colour from the orthophoto ----------------
+import re
+def parse_bldg(desc):
+    """NJ MOD-IV BLDG_DESC: '2SF2G 2207' (2 storeys, frame, 2-car garage, 2,207 sq ft), '1SFG2', '1F 1072', '1.5SF-CAPE', 'RANCH', 'COLONIAL', 'BI LEVEL'..."""
+    d = (desc or "").upper().strip(); o = {}
+    if not d or d.startswith("COND") or d.startswith("TOWN") or d in ("DOCK", "SFD"): return o
+    m = re.match(r"^(\d(?:\.\d)?)\s*S?([A-Z]*)", d)
+    if m: o["st"] = float(m.group(1)); letters = m.group(2)
+    else:
+        letters = ""
+        if "RANCH" in d: o["st"] = 1.0
+        elif "CAPE" in d: o["st"] = 1.5
+        elif "COLONIAL" in d or "CONTEMP" in d: o["st"] = 2.0
+        elif "LEVEL" in d: o["st"] = 1.5
+    if "LEVEL" in d or "SPLIT" in d: o["st"] = 1.5
+    if "CAPE" in d: o["st"] = 1.5
+    g = re.search(r"(\d)G", d) or re.search(r"G(\d)", d)
+    if g: o["g"] = int(g.group(1))
+    elif "G" in letters: o["g"] = 1
+    elif "st" in o and re.match(r"^\d(?:\.\d)?\s*S?F?(\s|$)", d): o["g"] = 0
+    if "B" in letters: o["bf"] = 1
+    sq = re.search(r"(?<!\d)(\d{3,4})\s*$", d)
+    if sq: o["sf"] = int(sq.group(1))
+    return o
+H_OF = {1.0: 3.0, 1.5: 4.3, 2.0: 5.6, 2.5: 6.4, 3.0: 8.4}
+def pip(x, z, ring):
+    ins = False; n = len(ring) // 2; j = n - 1
+    for i in range(n):
+        xi, zi, xj, zj = ring[2 * i], ring[2 * i + 1], ring[2 * j], ring[2 * j + 1]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi: ins = not ins
+        j = i
+    return ins
+parcel_hits = 0; parcel_tot = 0
+if os.path.exists(os.path.join(RAW, "parcels.json.gz")):
+    PCL = json.load(gzip.open(os.path.join(RAW, "parcels.json.gz"), "rt")); grid = {}
+    allres = []
+    for tk, tt in tiles.items():
+        for b in tt["bld"]:
+            if b["k"] != "res": continue
+            xs = b["p"][0::2]; zs = b["p"][1::2]; cx = sum(xs) / len(xs) / 10; cz = sum(zs) / len(zs) / 10
+            ar = abs(area([(xs[i] / 10, zs[i] / 10) for i in range(len(xs))])); allres.append((b, cx, cz, ar)); grid.setdefault((int(cx // 60), int(cz // 60)), []).append(len(allres) - 1)
+    for pc in PCL:
+        if pc[2] != "2" or not pc[7]: continue
+        parcel_tot += 1
+        ring = []
+        for i in range(0, len(pc[7]), 2): x, z = P(pc[7][i], pc[7][i + 1]); ring += [x, z]
+        xs = ring[0::2]; zs = ring[1::2]; best = None
+        for gx in range(int(min(xs) // 60), int(max(xs) // 60) + 1):
+            for gz in range(int(min(zs) // 60), int(max(zs) // 60) + 1):
+                for ix in grid.get((gx, gz), []):
+                    b, cx, cz, ar = allres[ix]
+                    if pip(cx, cz, ring) and (best is None or ar > best[3]): best = allres[ix]
+        if best is None: continue
+        o = parse_bldg(pc[3]); b = best[0]
+        if "st" in o: b["st"] = o["st"]; b["h"] = H_OF.get(o["st"], 3.0 + 2.6 * (o["st"] - 1))
+        for k in ("g", "bf", "sf"):
+            if k in o: b[k] = o[k]
+        if pc[4] and 1700 < pc[4] < 2030: b["yr"] = int(pc[4])
+        parcel_hits += 1
+    print("MOD-IV parcels matched to houses", parcel_hits, "of", parcel_tot)
+if SRC is not None:
+    rc_n = 0
+    for tk, tt in tiles.items():
+        for b in tt["bld"]:
+            if b["k"] not in ("res", "small"): continue
+            xs = [v / 10 - OG["gx0"] for v in b["p"][0::2]]; zs = [v / 10 - OG["gz0"] for v in b["p"][1::2]]
+            c0, c1, r0, r1 = int(min(xs)), int(max(xs)) + 1, int(min(zs)), int(max(zs)) + 1
+            if c0 < 0 or r0 < 0 or c1 >= SRC.shape[1] or r1 >= SRC.shape[0] or c1 - c0 < 3 or r1 - r0 < 3: continue
+            mk = Image.new("L", (c1 - c0, r1 - r0), 0); ImageDraw.Draw(mk).polygon([(xs[i] - c0, zs[i] - r0) for i in range(len(xs))], fill=255)
+            px = SRC[r0:r1, c0:c1][np.asarray(mk) > 0].astype(int)
+            if len(px) < 8: continue
+            px = px[~((px[:, 1] > px[:, 0] + 6) & (px[:, 1] > px[:, 2] + 6))]   # tree canopy over the roof: drop green-dominant pixels
+            if len(px) < 6: continue
+            m = np.median(px, axis=0); lum = float(m.mean())
+            m = np.clip(lum + (m - lum) * 0.7, 0, 255)                            # tame saturation (shadows, colour cast)
+            m = m * (0.55 / max(0.55, lum / 255 * 1.0)) if lum / 255 > 0.55 else m  # very light roofs (glare) come down a little
+            m = np.clip(m, 40, 175); b["rc"] = "%02x%02x%02x" % tuple(int(v) for v in m); rc_n += 1
+    print("roof colours from the photo", rc_n)
+    SRC = None
 
 # ---------------- procedural trees (masks) ----------------
 rng = random.Random(1977)
