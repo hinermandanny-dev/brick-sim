@@ -3,6 +3,7 @@ import * as THREE from '../vendor/three.module.js';
 import { PAL, SIDING, BRICKS, ROOFS, GeoBuilder, canvasTex, rng, hash, strHash, pointInPoly, polyArea, clamp, distSeg } from './util.js';
 import { CLASS, laneGeom } from './roads.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
+import { fitHouse, buildHandHouse } from './handhouse.js';
 
 const TS = 400, DS = 8, DN = 51;
 const LOAD_R = 950, DROP_R = 1350;
@@ -459,6 +460,13 @@ export class World {
       const kindCode = res || small ? (r() < .45 ? 1.3 : 1) : big ? 3 : ['school', 'office', 'apartments', 'hospital', 'university', 'college', 'hotel', 'public', 'civic'].includes(b.k) ? 4 : 2;
       const wallCol = new THREE.Color(res ? SIDING[(r() * SIDING.length) | 0] : big ? '#cfc8b8' : b.k === 'church' ? BRICKS[(r() * 4) | 0] : (r() < .35 ? BRICKS[(r() * 4) | 0] : ['#d8d0bf', '#c7bfae', '#e2dccf', '#b9b2a4', '#a8a091'][(r() * 5) | 0]));
       if (b.n && /walmart/i.test(b.n) && b.h > 4) { cols.push({ P, minx, maxx, minz, maxz, h: b.h, top: b.h + 3, b, store: true }); continue; } // the store draws Walmart itself (with real entrances)
+      // a hand-built house (local/house.json, private): replaces the generated walls and roof of Dan's own house
+      if (res && this.handSpec && this.homeXZ && Math.hypot((minx + maxx) / 2 - this.homeXZ[0], (minz + maxz) / 2 - this.homeXZ[1]) < 8) {
+        const nr = this.roads.nearest((minx + maxx) / 2, (minz + maxz) / 2, 55, e => e.cls >= 3 && e.cls <= 7 && !e.way.sv);
+        const fit = nr && fitHouse(P, { x: nr.qx, z: nr.qz }, this.handSpec.garage || 'left');
+        if (fit) { const E = ymin + .45 + (this.handSpec.eave || 5.3); cols.push({ P, minx, maxx, minz, maxz, h: E, top: E + 3, b }); t.houses.push({ b, P, cx: (minx + maxx) / 2, cz: (minz + maxz) / 2, eave: E, ymin, col: wallCol, r: r(), custom: fit }); continue; }
+        console.warn('hand-built house: the footprint does not fit the spec, using the generated house');
+      }
       const found = res ? 0.45 : 0.15, base = ymin - 0.3, eave = ymin + found + b.h;
       let u = 0;
       for (let q = 0; q < P.length; q += 2) {
@@ -555,6 +563,16 @@ export class World {
     for (const h of t.houses) {
       const near = R.nearest(h.cx, h.cz, 55, e => e.cls >= 3 && e.cls <= 7 && !e.way.sv);
       if (!near) continue;
+      if (h.custom) { // hand-built house: its own door, garage, driveway and plantings
+        const hr = buildHandHouse(this.handSpec, h.custom, { y: h.ymin + .45 }, { qx: near.qx, qz: near.qz, half: near.e.way.w / 2 + .3 });
+        t.g.add(hr.group); const d = hr.drive, len = Math.hypot(d.ex - d.sx, d.ez - d.sz), width = d.width;
+        const nx = -(d.ez - d.sz) / len * width / 2, nz = (d.ex - d.sx) / len * width / 2, steps = Math.max(1, Math.ceil(len / 3)); let pl = -1; const Wc = new THREE.Color(1, 1, 1);
+        for (let k = 0; k <= steps; k++) { const x = d.sx + (d.ex - d.sx) * k / steps, z = d.sz + (d.ez - d.sz) * k / steps, y = this.height(x, z) + 0.05; const a = dw.vert(x + nx, y, z + nz, 0, 1, 0, Wc, 0, k * len / steps / 2), b2 = dw.vert(x - nx, y, z - nz, 0, 1, 0, Wc, 1, k * len / steps / 2); if (pl >= 0) dw.quadTo(pl, a, b2, pl + 1, 0, 1, 0); pl = a; }
+        const mx = d.ex + nx / (width / 2) * (width / 2 + .8), mz = d.ez + nz / (width / 2) * (width / 2 + .8), my = this.height(mx, mz);
+        det.box(mx, my + .55, mz, .1, 1.1, .1, post); det.box(mx, my + 1.15, mz, .24, .26, .5, mailCol, d.yaw);
+        h.door = hr.door; h.drive = d; recs.push({ sx: d.sx, sz: d.sz, ex: d.ex, ez: d.ez, yaw: d.yaw, width, len, house: h, mail: [mx, mz], addr: h.b.a || '', car: true });
+        continue;
+      }
       const e = near.e; const qx = near.qx, qz = near.qz;
       // closest wall point to the road
       let best = null;

@@ -34,6 +34,7 @@ class Game {
     this.roads = new Roads(await j(B + 'roads.json')); bar(.25, 'reading addresses…');
     this.addr = await j(B + 'addr.json').catch(() => []);
     const local = this.region.home ? await j('local/home.json').catch(() => null) : null;
+    const handSpec = this.region.home ? await j('local/house.json').catch(() => null) : null; // private spec of one hand-built house (never published)
     // renderer
     const canvas = $('c');
     const R = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: !new URLSearchParams(location.search).has('nolog') }); // log depth: road/junction/ground layers mm apart no longer z-fight at range (the 25 Oct flicker)
@@ -70,6 +71,7 @@ class Game {
     else if (this.meta.walmart) { const p = this.meta.walmart.poly; sx = p[0] / 10; sz = p[1] / 10; }
     else { sx = (this.meta.gx0 + this.meta.gx1) / 2; sz = (this.meta.gz0 + this.meta.gz1) / 2; }
     const n = this.roads.nearest(sx, sz, 200, e => e.cls >= 2);
+    if (handSpec) this.world.handSpec = handSpec;
     if (hp) this.world.homeXZ = [hp.x, hp.z]; // your own driveway holds your car, not a random parked one
     bar(.3, 'building the neighbourhood…');
     await this.world.loadAround(sx, sz, 650, (f) => bar(.3 + f * .65, 'building the neighbourhood… ' + Math.round(f * 100) + '%'));

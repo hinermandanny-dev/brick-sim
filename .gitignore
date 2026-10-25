@@ -1,2 +1,5 @@
 local/
 *.log
+site/data/
+site/regions/
+node_modules/
