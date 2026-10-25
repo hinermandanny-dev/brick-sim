@@ -141,17 +141,19 @@ export class HUD {
     c.onwheel = (e) => { this.mapView.s = clamp(this.mapView.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), .05, 3); e.preventDefault(); };
     $('mapclose').onclick = () => this.toggleMap();
   }
-  teleport(x, z) {
+  teleport(x, z) { // fade out, move (car into the travel lane, scooter beside you or under you), load, fade back in
     const P = this.g.player, W = this.g.world, R = this.R;
-    const n = R.nearest(x, z, 400, e => e.cls >= 2); let px = x, pz = z, yaw = P.yaw;
-    if (n) { const a = R.at(n.e, n.s); const off = n.e.way.w / 2 + 1.2; px = n.qx - a.hz * off; pz = n.qz + a.hx * off; yaw = Math.atan2(a.hx, a.hz); }
+    const n = R.nearest(x, z, 400, e => e.cls >= 2); let px = x, pz = z, yaw = P.yaw, cx = x, cz = z;
+    if (n) { const a = R.at(n.e, n.s); const off = n.e.way.w / 2 + 1.2, offC = Math.max(1.6, n.e.way.w / 2 - 1.8); px = n.qx - a.hz * off; pz = n.qz + a.hx * off; cx = n.qx - a.hz * offC; cz = n.qz + a.hx * offC; yaw = Math.atan2(a.hx, a.hz); }
+    let f = document.getElementById('tpfade'); if (!f) { f = document.createElement('div'); f.id = 'tpfade'; f.style.cssText = 'position:fixed;inset:0;background:#0d0e10;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50'; document.body.appendChild(f); }
     const go = () => {
-      if (P.driving) { P.placeCar(px, pz, yaw); P.x = px; P.z = pz; }
-      else { const riding = P.riding; P.x = px; P.z = pz; P.y = W.height(px, pz) + .1; P.vx = P.vz = 0; P.v = 0; P.yaw = P.lookYaw = yaw;
-        if (riding || !P.sc.locked) { P.sc.x = riding ? px : px + Math.cos(yaw) * 1.1; P.sc.z = riding ? pz : pz - Math.sin(yaw) * 1.1; P.sc.yaw = yaw; } }
+      if (P.driving) { P.placeCar(cx, cz, yaw); P.x = cx; P.z = cz; P.lookYaw = yaw; }
+      else { const riding = P.riding; P.x = px; P.z = pz; P.y = W.height(px, pz) + .1; P.vx = P.vz = 0; P.v = 0; P.thr = 0; P.yaw = P.lookYaw = yaw;
+        if (riding || !P.sc.locked) { P.sc.x = riding ? px : px + Math.cos(yaw) * 1.1; P.sc.z = riding ? pz : pz - Math.sin(yaw) * 1.1; P.sc.yaw = yaw; P.sc.y = W.height(P.sc.x, P.sc.z); } }
       P.inside = null; P.walls = [];
     };
-    W.loadAround(px, pz, 300).then(go); go(); toast('Teleported' + (n && n.e.way.n ? ' to ' + n.e.way.n : '') + '.');
+    f.style.opacity = 1; P.frozen = true;
+    setTimeout(() => { go(); W.loadAround(P.x, P.z, 350).then(() => { go(); P.frozen = false; f.style.opacity = 0; toast('Teleported' + (n && n.e.way.n ? ' to ' + n.e.way.n : '') + '.'); }); }, 260);
   }
   toggleMap() {
     this.mapOpen = !this.mapOpen; $('map').classList.toggle('hidden', !this.mapOpen);

@@ -198,7 +198,7 @@ stalk animation, an exit animation, wipers, night dash glow.
    Mapillary still needs Dan's free client token in `_secrets/`.
 3. Item 5: PLAY-UPDATE.cmd (Dan's local copy has the OLD bake: no ortho ground; the site/data on Pages is current),
    faster parallel bake, render checks per region.
-4. Teleport fade + car/scooter cases (item 8).
+4. (done 25 Oct: teleport fades, loads, puts the car in the travel lane and keeps you on the scooter; tested walk/scooter/car headless)
 
 ## New Jersey: what exists (25 Oct, ~05:20 ET, same night session)
 The separate session could not be started automatically (the brain commander rightly refused an unverifiable bus
