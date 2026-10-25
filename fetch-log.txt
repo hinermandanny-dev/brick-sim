@@ -1,0 +1,13 @@
+bbox [39.672, -74.32, 39.728, -74.215]
+highways 2060
+buildings 972
+areas 370
+lines 148
+nodes 1325
+addr 63
+rels 806
+restr 24196
+dem usgs3dep [4000, 4000] -0.3 36.8
+nj address points 6634
+ms source minedbuildings.z5.web.core.windows.net
+microsoft buildings 5437
