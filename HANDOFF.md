@@ -189,7 +189,7 @@ V6 firing-frequency engine sound. Measured: 0-60 mph 8.4 s, 60-0 in 44.6 m, whee
 Left for later: exterior detail (door seams, badges, fog lights), interior door handles, rear seat detail, turn-signal
 stalk animation, an exit animation, wipers, night dash glow.
 
-**Not started this session (in this order next):**
+**(Part 1's 'not started' list; items 1, 2 and 3 were DONE in part 2 below, see there)**
 1. Item 2, placement audit: measure each class on the baked data (driveway through a house, mailbox in a driveway,
    tree in a road/driveway/house, parked car overlaps, sign posts in the road, lamps over houses), fix, add to check.mjs.
    The ortho classes now give a real-world signal for driveways (paved pixels between a house and its road).
@@ -199,6 +199,102 @@ stalk animation, an exit animation, wipers, night dash glow.
 3. Item 5: PLAY-UPDATE.cmd (Dan's local copy has the OLD bake: no ortho ground; the site/data on Pages is current),
    faster parallel bake, render checks per region.
 4. (done 25 Oct: teleport fades, loads, puts the car in the travel lane and keeps you on the scooter; tested walk/scooter/car headless)
+
+## POLISH PASS, part 2 (25 Oct afternoon, Sonnet session) - what landed, what is measured, what is left
+All of it is pushed (commits 8b84fe0 .. 54ef387) and the `site` workflow is green on 54ef387 (syntax, data, render, vehicles,
+placement audit, region checks, deploy). Dan's folder got the same build (see "Shipping to Dan's PC" below).
+
+**Dan's own house, hand-built (Dan, 14:16: "look up pictures of 172 and handmake it ... including the garage").**
+- Source: Google Maps Street View of his address (capture Jul 2013): 2-storey colonial, brick centre bay with a front
+  pediment, grey vinyl siding on the wings, maroon louvred shutters, dark grey roof, white double-door unit with a sidelight
+  and 3 steps with white rails, a 2-car garage on the LEFT standing ~2 m proud of the main front, wide concrete drive, a
+  tall arborvitae by the left wing, a red Japanese maple at right, a yellow-green shrub by the steps, white vinyl fence.
+- MOD-IV says the same: `2SF2G 2207`, built 1999, 0.2244 acres (so 2 storeys, frame, 2-car garage). Two independent sources agree.
+- `site/js/handhouse.js` (public, GENERIC, no address in it): `fitHouse()` reads a 6-corner footprint, finds the short "jog"
+  edge (garage front vs main front), takes the outward normal from it, checks that the front faces the nearest road and the
+  garage is on the side the spec says, and returns a frame (u right / v out). `buildHandHouse()` models it in that frame and
+  returns the group + `door` + `drive` records the rest of the game already uses (interior, car spawn, parking). Anything that
+  does not fit returns null and the generated house is used (console warning).
+- The spec is `local/house.json` (git-ignored, Dan's folder only; the container copy is just `{"garage":"left"}`): colours and
+  `garage: left`. The public site has no home and no spec, so Pages shows a generic house there. Do NOT commit the spec or the address.
+- Wiring: main.js loads `local/house.json` -> `world.handSpec`; `world.buildBuildings` skips the generated walls/roof for the
+  residential building whose centroid is < 8 m from `homeXZ` and records `h.custom = frame`; `buildDriveways` builds the model,
+  the drive (garage-wide, ends at the road edge) and the mailbox.
+- Verified headless (street view, left oblique, aerial): garage left, bay centred, pediment, shutters, garage doors, steps,
+  arborvitae, maple, fence all read like the photo. 172 Taft is on a curve (corner-ish lot), as on the map.
+- NOT known / guessed: side and rear walls (only plain windows), the fence's exact run (placed from the right wall, 8.5 m across,
+  then 6 m towards the street), the garage interior (the interior is still the generic 2-room layout; the garage space behind
+  the doors is not modelled), the real room layout. Dan can correct these by eye; colours live in `local/house.json`.
+
+**Placement audit (item 2) - measured, fixed at the causes, locked in CI.** `tools/audit.mjs` boots the game headless, builds
+real tiles at seeded residential sites (12 sites, 33 tiles, ~3,000 houses, ~12k trees, ~2,700 parked cars) and counts each
+class AS THE PLAYER SEES IT. `tools/audit-limits.json` holds the limits; CI runs `audit.mjs site --sites 6 --check`.
+| class | before | after | cause and fix |
+|---|---|---|---|
+| mailbox in the road | 82 % | 0 | offset was +0.4 m INTO the road edge; now behind the curb, tries both sides and 1.8 m out, never in road/house/another drive (no mailbox if nothing fits) |
+| driveway through a neighbour's house | 2.1 % | 0.03 % | the straight line to the nearest road crossed another footprint; such a drive is dropped |
+| tree in a driveway | 4.3 % | 0 | `buildTrees` skips trees within drive half-width + 1.4 m |
+| tree in the road | 2.6 % | 0 | trunk >= 1.5 m from the carriageway (client) and the bake mask now includes the NEIGHBOUR tiles' roads |
+| tree in a house | 0.9 % | 0.02 % | >= 1.6 m from any wall (client) and the bake mask includes neighbour tiles' buildings |
+| parked car in a house | 2.7 % | 0.04 % | `Traffic.spotOk` checks the 4 corners + centre against footprints; drives shorter than 5.6 m get no car |
+| parked car on the carriageway | 3.1 % | 0 | same check against the road edge (all corners) |
+| parked cars overlapping | 1.1 % | 0 | same check, 2.1 m between centres |
+| post/pole in the road | 19 % | 0 | OSM mapped them on the centreline: nudged to half-width + 0.7 m (3 passes, so a second road also clears) |
+Residual 0.03-0.3 % are tile-edge cases (the neighbour tile's colliders were not loaded when this tile was built). Not measured
+because no signal exists: lamp heads over houses (needs the lamp arm geometry), pickup signs/store pieces outside lots.
+
+**Houses from data (item 1).**
+- MOD-IV: the NJOGIS-org layer `Parcels_MODIV_NJ_WM` needs a token; the PUBLIC one is
+  `https://maps.nj.gov/arcgis/rest/services/Framework/Cadastral/MapServer/0` (statewide parcels + MOD-IV attributes, max 1000 per
+  page, query with `outSR=4326`). `tools/fetch_modiv.py` probes both and `fetch-modiv.yml` appends `parcels.json.gz` (87,779
+  parcels, 4 MB) and `modiv-log.txt` to a data branch WITHOUT touching its other files (`gh api -X POST
+  repos/hinermandanny-dev/brick-sim/actions/workflows/fetch-modiv.yml/dispatches -f ref=main [-f inputs[region]=ac]`).
+- `BLDG_DESC` formats seen: `2SF2G 2207` (storeys, S, exterior letters, garage "2G" or "G2", then sq ft), `1F 1072`, `1.5SF-CAPE`,
+  `RANCH`, `COLONIAL`, `BI LEVEL`, `SPLIT LEVEL`, `COND ...`, `TOWNHOUSE`. `bake.py parse_bldg` reads storeys (`st`), garages
+  (`g`, 0 when the description clearly has none), brick (`bf`, a "B" among the exterior letters: 551 houses only, so unsure) and sq ft (`sf`).
+  Parcel -> house: the largest residential footprint whose centroid is inside the parcel. 41,202 of 56,773 parcels matched;
+  `st` on 38.5k houses, `g` on 33k, `yr` on 41k, `sf` on 32k.
+- Used by the client: height from storeys (3.0 / 4.3 / 5.6 / 6.4 / 8.4 m), garage door and drive width from `g` (2 -> 5.4 m, 1 -> 3.3 m,
+  0 -> no door, 2.8 m), brick walls when `bf`. NOT used yet: `yr` (era -> siding/roof style), `sf` (footprint sanity, interior size),
+  the parcel polygons (lot lines: fences, yards, a better driveway side than "nearest road").
+- Roof colour: median RGB of the 2020 orthophoto inside each house footprint (green-dominant pixels dropped as tree canopy,
+  saturation x0.7, clamped 40..175): `b.rc` on 53k buildings; used for every residential/small roof. Siding colour is still random
+  (the photo shows roofs, not walls).
+- MAPILLARY NOT DONE: it needs Dan's free client token (`_secrets/mapillary-token.txt`) and I cannot create one. When it exists:
+  (1) a repo secret on `hinermandanny-dev/brick-sim` (the classic PAT in `_secrets/mirror-token.txt` can set secrets through the REST API with
+  PyNaCl), (2) a `fetch-mapillary.yml` that lists images within ~40 m of each house front facing it (bbox query on
+  `graph.mapillary.com/images`, `compass_angle`, `computed_geometry`), (3) a cheap colour read of the facade (no model needed for siding:
+  cluster the pixels in the strip below the roofline) written as `b.sc`, (4) the client uses `b.sc` over the random siding. Do not start
+  (3) before Dan's token exists: it cannot be tested without it.
+
+**Infrastructure (item 5).**
+- `PLAY-UPDATE.cmd` -> `tools/update.mjs`: downloads only changed files (size + sha1 from `site/manifest.json`, written by
+  `tools/manifest.mjs` in the site workflow) from https://hinermandanny-dev.github.io/brick-sim/ into `site/`, never touches `local/`,
+  then starts the game (`PLAY.cmd`). Tested against a local mock: stale file replaced, second run 0 downloads, checksum-verified, `.part` files renamed atomically.
+- Parallel bake: ortho classification (69 s) and tile writing (43 s) run in forked worker processes (`BAKE_JOBS`, default = CPUs;
+  serial on Windows). Brick bake 155 s -> 97 s on 2 cores, output byte-identical (diffed). CI runners have 4 cores.
+- `tools/check.mjs` now also checks EVERY region in regions.json (tiles, DEM size, roads, named start place resolves);
+  `tools/region-check.mjs` boots each non-home region headless and fails on page errors, holes, untextured tiles, flicker.
+  Both are in the site workflow, together with `audit.mjs --check` and `manifest.mjs`.
+- `.gitignore` now ignores `site/data/`, `site/regions/` (CI bakes them; never commit them), `local/`, `node_modules/`.
+
+**Working notes for the next session (things that cost time today).**
+- In the cloud container the repo clone is `/root/bsgit`; the Write/Edit/Read tools act on `/home/claude/...`, a DIFFERENT tree:
+  write files with Bash (heredoc/python) or Write to a `/root/bsgit/...` absolute path.
+- Pushing: `mcp__claude-code-remote__add_repo` (access "push") once, then plain `git push origin main` with the https URL (no token in it).
+  `gh workflow run` fails (GraphQL blocked): use `gh api -X POST .../workflows/<file>/dispatches -f ref=main`.
+- Dan's PC shell (device_bash) CANNOT reach github.io, so `update.mjs` cannot be run from there. To put a build on his PC: tar the
+  repo (minus .git/local/HANDOFF.md) into `/mnt/user-data/outputs`, `device_commit_files` it into `brick-sim/_incoming/`, then extract with
+  `device_bash`. Overwriting needs `device_request_delete_permission` (granted once this session). Remove the tgz afterwards.
+- Headless tests: `tools/audit.mjs` takes ~3 min for 12 sites; screenshots of the hand-built house need `local/home.json` + `local/house.json`
+  served at `/local/` (see how audit.mjs's `BS_LOCAL` env works; Dan's real address is only in Dan's folder).
+
+### Still open from the polish list
+1. Mapillary siding colours (blocked on Dan's token, plan above).
+2. Neighbour houses are still generic gable boxes: use `yr`/`st`/`sf`/`g` to vary roof shape (hip/gable/cross-gable), porch, garage position; MOD-IV `COLONIAL`/`RANCH`/`CAPE` names are style hints.
+3. The garage INTERIOR and a truer room layout in Dan's house (ask Dan; he can describe it).
+4. Exterior detail on the Pathfinder (door seams, badges, fog lights), wipers, turn-signal stalk, exit animation (from part 1's list).
+5. NJ: the statewide road skeleton and more regions (list below), which Dan wants AFTER this polish pass.
 
 ## New Jersey: what exists (25 Oct, ~05:20 ET, same night session)
 The separate session could not be started automatically (the brain commander rightly refused an unverifiable bus

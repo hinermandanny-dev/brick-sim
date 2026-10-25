@@ -4,7 +4,7 @@ Brick Township, New Jersey, as a game: every real road, lane, sign, signal and b
 elevation from USGS 3DEP, real sun position. Ride a Segway Ninebot E2 Pro around town, go home, change clothes in the
 mirror, and work an online-grocery-pickup shift at the Route 88 Walmart on your work phone.
 
-**Play:** https://hinermandanny-dev.github.io/brick-sim/ or double-click `PLAY.cmd` (needs Node.js).
+**Play:** https://hinermandanny-dev.github.io/brick-sim/ or double-click `PLAY.cmd` (needs Node.js). **`PLAY-UPDATE.cmd`** downloads the latest game and map first, then starts it (your `local/` home settings are never touched).
 
 | key | what |
 |---|---|
