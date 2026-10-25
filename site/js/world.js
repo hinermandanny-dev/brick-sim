@@ -24,6 +24,7 @@ function initMats() {
   const drv = canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#b8b2a6'; g.fillRect(0, 0, w, h); const r = rng(3); for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(0,0,0,${r() * .06})`; g.fillRect(r() * w, r() * h, 2, 2); } g.fillStyle = 'rgba(60,50,40,.35)'; g.fillRect(0, 0, w, 1); });
   MAT.driveway = new THREE.MeshLambertMaterial({ map: drv });
   MAT.drivewayA = new THREE.MeshLambertMaterial({ color: '#3f3f41' });
+  MAT.boards = new THREE.MeshLambertMaterial({ map: canvasTex(128, 128, (g) => { g.fillStyle = '#9c7a55'; g.fillRect(0, 0, 128, 128); for (let y = 0; y < 128; y += 8) { g.fillStyle = y % 16 ? '#8e6d4a' : '#a5825c'; g.fillRect(0, y, 128, 7); g.fillStyle = 'rgba(40,25,10,.5)'; g.fillRect(0, y + 7, 128, 1); } }) }); // boardwalk planks
   MAT.path = new THREE.MeshLambertMaterial({ color: '#7a756c' });
   MAT.water = new THREE.MeshPhongMaterial({ color: '#3d6a84', specular: '#bcd4e0', shininess: 60, transparent: true, opacity: 0.92 });
   MAT.isect = roadTex('isect'); // a plain-asphalt material (no markings)
@@ -342,14 +343,15 @@ export class World {
     if (isect.count) { const m = new THREE.Mesh(isect.build(), MAT.isect); m.receiveShadow = true; t.g.add(m); }
   }
   buildFoot(t) {
-    const sw = new GeoBuilder(true), pth = new GeoBuilder(); const side = new THREE.Color('#b1aa9d'), top = new THREE.Color(1, 1, 1), pc = new THREE.Color('#7d776d');
+    const sw = new GeoBuilder(true), pth = new GeoBuilder(); let bw = null; const side = new THREE.Color('#b1aa9d'), top = new THREE.Color(1, 1, 1), pc = new THREE.Color('#7d776d');
     t.walks = [];
     for (const f of t.d.foot) {
       const p = f.p; if (p.length < 4) continue;
       const isSW = f.k === 'sw' || f.k === 'footway' || f.k === 'pedestrian';
-      const w = f.k === 'sw' ? 1.5 : f.k === 'cx' ? 2.4 : f.k === 'path' || f.k === 'track' ? 1.6 : f.k === 'cycleway' ? 2.2 : 1.6;
-      const raise = f.k === 'sw' ? 0.15 : f.k === 'cx' ? 0.01 : 0.04;
-      const b = isSW && f.k !== 'cx' ? sw : pth; let dist = 0, pl = -1;
+      const board = /boardwalk/i.test(f.n || '') || (f.s === 'wood' && f.k === 'pedestrian'); // the Atlantic City Boardwalk
+      const w = board ? (f.w || 18) : f.w ? Math.min(f.w, 12) : f.k === 'sw' ? 1.5 : f.k === 'cx' ? 2.4 : f.k === 'path' || f.k === 'track' ? 1.6 : f.k === 'cycleway' ? 2.2 : 1.6;
+      const raise = board ? 1.2 : f.k === 'sw' ? 0.15 : f.k === 'cx' ? 0.01 : 0.04;
+      const b = board ? (bw || (bw = new GeoBuilder(true))) : isSW && f.k !== 'cx' ? sw : pth; let dist = 0, pl = -1;
       const P = []; for (let q = 0; q < p.length; q += 2) P.push([p[q] / 10, p[q + 1] / 10]);
       t.walks.push({ k: f.k, P, w, raise });
       for (let q = 0; q < P.length; q++) {
@@ -358,7 +360,7 @@ export class World {
         const nx = -dz * w / 2, nz = dx * w / 2;
         if (q) dist += Math.hypot(x - P[q - 1][0], z - P[q - 1][1]);
         const y = this.height(x, z) + raise + (f.br ? 0.5 : 0);
-        if (b === sw) {
+        if (b === sw || b === bw) {
           const i0 = b.vert(x + nx, y, z + nz, 0, 1, 0, top, 0, dist / 1.5), i1 = b.vert(x - nx, y, z - nz, 0, 1, 0, top, 1, dist / 1.5);
           const i2 = b.vert(x + nx, y - .2, z + nz, nx, 0, nz, top, 0, dist / 1.5), i3 = b.vert(x - nx, y - .2, z - nz, -nx, 0, -nz, top, 1, dist / 1.5);
           const i4 = b.vert(x + nx, y, z + nz, nx, 0, nz, top, 0, dist / 1.5), i5 = b.vert(x - nx, y, z - nz, -nx, 0, -nz, top, 1, dist / 1.5);
@@ -371,6 +373,7 @@ export class World {
       }
     }
     if (sw.count) { const m = new THREE.Mesh(sw.build(), MAT.sidewalk); m.receiveShadow = true; t.g.add(m); }
+    if (bw && bw.count) { const m = new THREE.Mesh(bw.build(), MAT.boards); m.receiveShadow = true; t.g.add(m); }
     if (pth.count) { const m = new THREE.Mesh(pth.build(), new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1 })); m.material._own = true; m.receiveShadow = true; t.g.add(m); }
   }
   buildBuildings(t) {

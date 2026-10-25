@@ -124,8 +124,10 @@ for w in hw:
         for x, z in pts: poly += [D(x), D(z)]
         kind = "sw" if fw == "sidewalk" else "cx" if fw == "crossing" else t
         mx = sum(p[0] for p in pts) / len(pts); mz = sum(p[1] for p in pts) / len(pts)
-        T(tkey(mx, mz))["foot"].append({"k": kind, "p": poly, "br": 1 if tg.get("bridge") not in (None, "no") else 0,
-                                         "s": tg.get("surface", "")})
+        fr = {"k": kind, "p": poly, "br": 1 if tg.get("bridge") not in (None, "no") else 0, "s": tg.get("surface", "")}
+        if tg.get("name"): fr["n"] = tg["name"][:40]
+        if re.match(r"^[\d.]+$", tg.get("width", "")): fr["w"] = float(tg["width"])
+        T(tkey(mx, mz))["foot"].append(fr)
 print("ways", len(ways), "edges", len(edges), "gnodes", len(gn))
 
 # ---------------- nodes (controls/props) ----------------
@@ -323,12 +325,13 @@ def clip(poly, x0, z0, x1, z1):
 water_polys = []; area_polys = []; area_labels = []
 for el in L("areas") + L("rels"):
     tg = el.get("tags", {}); kd = akind(tg)
-    if not kd: continue
-    outs, ins = rings_of(el)
     nm = tg.get("name")
+    if not kd and not (nm and (tg.get("place") or tg.get("natural") or tg.get("leisure") or tg.get("tourism"))): continue
+    outs, ins = rings_of(el)
     if nm and outs and len(outs[0]) >= 3 and kd not in ("res", "com", "ind"):
         r0 = outs[0]; cx_ = sum(p[0] for p in r0) / len(r0); cz_ = sum(p[1] for p in r0) / len(r0)
         area_labels.append([nm, D(cx_), D(cz_), tg.get("amenity") or tg.get("leisure") or tg.get("natural") or tg.get("landuse") or kd])
+    if not kd: continue
     for r in outs:
         if len(r) < 3: continue
         if kd == "water": water_polys.append(r)

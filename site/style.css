@@ -79,3 +79,12 @@ button:hover:not(:disabled){background:var(--clay2)}
 .sw.on{box-shadow:0 0 0 3px var(--clay)}
 #closet-done{width:100%;margin-top:6px}
 @media (max-width:700px){#mini{width:150px;height:150px}#speedo{width:120px}#phone{right:8px;bottom:8px;transform:scale(.85);transform-origin:bottom right}.map-side{display:none}}
+.travel{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(244,239,230,.94)}
+.travel-card{width:min(520px,90vw);text-align:center}
+.tr-to{font-size:28px;font-weight:800}
+.tr-via{opacity:.7;margin:6px 0 26px}
+.tr-road{position:relative;height:10px;border-radius:6px;background:#3d3d40;margin:0 10px}
+.tr-road i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--clay)}
+.tr-road b{position:absolute;top:-22px;transform:translateX(-50%);font-size:22px}
+.tr-clock{margin-top:22px;font-weight:700}
+.map-sec{font-size:11px;font-weight:800;letter-spacing:.08em;opacity:.55;margin:14px 0 6px}

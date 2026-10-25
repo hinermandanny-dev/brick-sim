@@ -44,7 +44,7 @@ export class HUD {
     e.clock.textContent = this.g.clockStr() + '  ' + this.g.weekday();
     const mph = p.speed / MPH;
     e.spd.textContent = Math.round(mph);
-    e.mode.textContent = p.riding ? ({ 1: 'ECO', 2: 'D', 3: 'S' })[p.mode] : 'WALK';
+    e.mode.textContent = p.driving ? (p.car.v < -.1 ? 'R' : 'CAR') : p.riding ? ({ 1: 'ECO', 2: 'D', 3: 'S' })[p.mode] : 'WALK';
     e.battbar.style.width = (p.batt * 100).toFixed(0) + '%'; e.battpct.textContent = Math.round(p.batt * 100) + '%';
     e.battbar.style.background = p.batt < .15 ? '#d9534f' : p.batt < .35 ? '#e0a23a' : '#5b8c5a';
     const on = (performance.now() % 760) < 400;
@@ -144,7 +144,11 @@ export class HUD {
     if (this.mapOpen) {
       document.exitPointerLock?.(); const p = this.g.player; this.mapView.x = p.x; this.mapView.z = p.z;
       const list = $('dests'); list.innerHTML = '';
+      const sec = (t) => { const s = document.createElement('div'); s.className = 'map-sec'; s.textContent = t; s.style.background = 'none'; s.style.cursor = 'default'; list.appendChild(s); };
+      sec('PLACES IN ' + this.g.region.name.toUpperCase());
       for (const d of this.g.dests()) { const el = document.createElement('div'); el.innerHTML = `<b>${d.name}</b><small>${d.sub}</small>`; el.onclick = () => { this.route(d); this.toggleMap(); }; list.appendChild(el); }
+      sec('DRIVE SOMEWHERE ELSE IN NJ');
+      for (const r of this.g.regions) { if (r.id === this.g.region.id) continue; const el = document.createElement('div'); el.innerHTML = `<b>🚗 ${r.name}</b><small>${r.sub || 'home'}</small>`; el.onclick = () => { this.toggleMap(); this.g.travel(r); }; list.appendChild(el); }
     }
   }
   drawMap() {

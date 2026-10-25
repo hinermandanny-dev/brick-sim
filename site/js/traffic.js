@@ -483,8 +483,10 @@ export class Traffic {
   parkTile(t) {
     const recs = this.world.drives.get(t.k) || []; const R = this.roads; const spots = [];
     const r = rng(t.i * 131 + t.j * 7);
+    const H = this.world.homeXZ;
     for (const d of recs) {
       if (!d.car) continue;
+      if (H && Math.hypot(d.house.cx - H[0], d.house.cz - H[1]) < 15) continue;
       const f = .35 + r() * .3; const x = d.sx + (d.ex - d.sx) * f, z = d.sz + (d.ez - d.sz) * f;
       spots.push([x, z, d.yaw + (r() < .5 ? Math.PI : 0), pickModel(r(), false)]);
       if (d.width > 5 && r() < .5) { const ox = Math.cos(d.yaw) * 2.6, oz = -Math.sin(d.yaw) * 2.6; spots.push([x + ox, z + oz, d.yaw, pickModel(r(), false)]); }

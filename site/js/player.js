@@ -1,6 +1,7 @@
 // You: walking, riding the E2 Pro (real power/drag/battery model), curbs, crashes, camera.
 import * as THREE from '../vendor/three.module.js';
 import { Character, makeScooter } from './character.js';
+import { MODELS } from './cars.js';
 import { clamp, angDiff, toast, prompt, pointInPoly, distSeg } from './util.js';
 
 const MPH = 0.44704;
@@ -12,6 +13,9 @@ export class Player {
     this.scene = scene; this.world = world; this.roads = roads; this.traffic = traffic; this.cam = camera;
     this.body = new Character(outfit); scene.add(this.body.root);
     this.scooter = makeScooter(); scene.add(this.scooter);
+    // the family car (a mid-size sedan): drive it with F at the driver's door
+    this.car = { x: 0, z: 0, y: 0, yaw: 0, v: 0, steer: 0, mesh: makeCar() }; scene.add(this.car.mesh);
+    this.driving = false;
     this.x = 0; this.z = 0; this.y = 0; this.yaw = 0; this.vx = 0; this.vz = 0; this.vy = 0;
     this.lookYaw = 0; this.pitch = -0.05; this.fp = true; this.camDist = 4.2;
     this.riding = false; this.v = 0; this.steer = 0; this.mode = 2; this.batt = 1; this.blink = 0; this.light = false;
@@ -28,21 +32,58 @@ export class Player {
     addEventListener('keydown', (e) => { if (e.target.tagName === 'INPUT') return; this.keys[e.code] = true; this.onKey && this.onKey(e.code, e); });
     addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement) { this.lookYaw -= e.movementX * .0022; this.pitch = clamp(this.pitch - e.movementY * .0022, -1.45, 1.2); }
+      if (document.pointerLockElement) { this.mouseLookT = performance.now(); this.lookYaw -= e.movementX * .0022; this.pitch = clamp(this.pitch - e.movementY * .0022, -1.45, 1.2); }
     });
     addEventListener('wheel', (e) => { if (!this.fp) this.camDist = clamp(this.camDist + e.deltaY * .004, 2, 12); });
+  }
+  placeCar(x, z, yaw) { const C = this.car; C.x = x; C.z = z; C.yaw = yaw; C.v = 0; C.y = this.world.surface(x, z).y; }
+  nearCar() { const C = this.car; const sx = C.x + Math.cos(C.yaw) * 1.3, sz = C.z - Math.sin(C.yaw) * 1.3; /* driver's door (left side) */ return Math.hypot(sx - this.x, sz - this.z) < 2.2 || Math.hypot(C.x - this.x, C.z - this.z) < 2.6; }
+  enterCar() {
+    const C = this.car;
+    if (this.driving) {
+      if (Math.abs(C.v) > 1.2) { toast('Stop the car first.'); return; }
+      this.driving = false; this.x = C.x + Math.cos(C.yaw) * 1.6; this.z = C.z - Math.sin(C.yaw) * 1.6; this.yaw = this.lookYaw = C.yaw; this.body.root.visible = true; toast('Parked.'); return;
+    }
+    if (this.riding || !this.nearCar()) return;
+    this.driving = true; this.body.root.visible = false; this.lookYaw = C.yaw; this.pitch = -.05;
+    toast('W gas · S brake / reverse · A D steer · Space horn · F get out');
+  }
+  drive(dt, k) {
+    const C = this.car; const m = 1550;
+    const thr = k.KeyW ? 1 : 0, brk = k.KeyS ? 1 : 0;
+    const surf = this.world.surface(C.x, C.z); this.surf = surf;
+    const crr = surf.kind === 'grass' ? .05 : .012;
+    let F = 0;
+    if (thr) F = C.v >= -.2 ? Math.min(6200, 105000 / Math.max(Math.abs(C.v), 1)) : 9000; // ~140 kW four-cylinder
+    if (brk) F = C.v > .3 ? -m * 8 : (C.v > -5 ? -3200 : 0);                              // brake, then creep in reverse
+    const drag = .5 * 1.2 * .68 * C.v * Math.abs(C.v) + crr * m * 9.81 * Math.sign(C.v);
+    C.v += (F - drag) / m * dt; if (!thr && !brk && Math.abs(C.v) < .15) C.v = 0;
+    const st = (k.KeyA ? 1 : 0) - (k.KeyD ? 1 : 0); const maxSt = clamp(.58 - Math.abs(C.v) * .016, .07, .58);
+    C.steer += (st * maxSt - C.steer) * (1 - Math.exp(-dt * 5));
+    C.yaw += C.v * Math.tan(C.steer) / 2.78 * dt;
+    const nx = C.x + Math.sin(C.yaw) * C.v * dt, nz = C.z + Math.cos(C.yaw) * C.v * dt;
+    const blocked = (x, z) => { for (const [ox, oz] of [[0, 2.3], [0, -2.3], [.9, 0], [-.9, 0]]) { const cx = x + Math.sin(C.yaw) * oz + Math.cos(C.yaw) * ox, cz = z + Math.cos(C.yaw) * oz - Math.sin(C.yaw) * ox; const b = this.world.buildingAt(cx, cz); if (b && !b.enterable && !b.store) return true; } return false; };
+    if (blocked(nx, nz)) { if (Math.abs(C.v) > 7) { toast('Crunch. That will need a body shop.'); this.onCrash && this.onCrash(); } C.v = 0; }
+    else { C.x = nx; C.z = nz; }
+    for (const o of this.traffic.obstacles(C.x, C.z, 10)) { const dx = C.x - o.x, dz = C.z - o.z; const a = dx * o.hx + dz * o.hz, b = -dx * o.hz + dz * o.hx; if (Math.abs(a) < o.L / 2 + 2.2 && Math.abs(b) < o.W / 2 + .85) { if (Math.abs(C.v) > 4) { toast('Fender bender.'); this.onCrash && this.onCrash(); } C.x -= Math.sin(C.yaw) * C.v * dt; C.z -= Math.cos(C.yaw) * C.v * dt; C.v = 0; } }
+    const y2 = this.world.surface(C.x, C.z).y; C.y += (y2 - C.y) * Math.min(1, dt * 10);
+    this.x = C.x; this.z = C.z; this.y = C.y; this.yaw = C.yaw; this.vx = Math.sin(C.yaw) * C.v; this.vz = Math.cos(C.yaw) * C.v;
+    if (!this.mouseLookT || performance.now() - this.mouseLookT > 1500) this.lookYaw += angDiff(this.lookYaw, C.yaw) * Math.min(1, dt * 4);
+    this.state = 'idle'; this.stats.dist += Math.abs(C.v) * dt; this.stats.top = Math.max(this.stats.top, Math.abs(C.v));
+    if (k.Space && !this._hornT) { this._hornT = .6; this.onHorn && this.onHorn(); } if (this._hornT) { this._hornT -= dt; if (this._hornT <= 0) this._hornT = 0; }
+    if (this.world.height(C.x, C.z) < -.5 && !(surf.kind === 'road')) { toast('That is the bay. Back to the road.'); C.v = 0; }
   }
   place(x, z, yaw) {
     this.x = x; this.z = z; this.yaw = yaw; this.lookYaw = yaw; this.y = this.world.height(x, z) + .05;
     this.sc.x = x + Math.cos(yaw) * 1.1; this.sc.z = z - Math.sin(yaw) * 1.1; this.sc.yaw = yaw; this.sc.y = this.world.height(this.sc.x, this.sc.z);
   }
-  get speed() { return this.riding ? Math.abs(this.v) : Math.hypot(this.vx, this.vz); }
+  get speed() { return this.driving ? Math.abs(this.car.v) : this.riding ? Math.abs(this.v) : Math.hypot(this.vx, this.vz); }
   // ---------------------------------------------------------------- per frame
   update(dt) {
     const k = this.keys;
     if (this.state === 'fall') { this.fallT -= dt; this.v *= .9; if (this.fallT <= 0) { this.state = 'idle'; toast('Up you get.'); } this.pose(dt); return; }
     if (this.frozen) { this.pose(dt); return; }
-    if (this.riding) this.ride(dt, k); else this.walk(dt, k);
+    if (this.driving) this.drive(dt, k); else if (this.riding) this.ride(dt, k); else this.walk(dt, k);
     this.pose(dt);
   }
   walk(dt, k) {
@@ -193,6 +234,17 @@ export class Player {
     if (S.userData.fw) { const r = this.v / .127 * dt; S.userData.fw.rotation.x += r; S.userData.rw.rotation.x += r; }
     S.userData.kick.visible = !this.riding;
     S.userData.lights.color.set(this.light ? '#fff6d8' : '#6b6b62');
+    // the car
+    const Cm = this.car.mesh; Cm.position.set(this.car.x, this.car.y, this.car.z); Cm.rotation.y = this.car.yaw;
+    Cm.userData.wheel.rotation.z = -this.car.steer * 6; Cm.userData.brake.material.color.set(this.driving && this.keys.KeyS ? '#ff2a1f' : '#5a0d0d');
+    if (this.driving && !this.camOverride) {
+      const cam = this.cam, C = this.car;
+      if (this.fp) { // driver's seat (left), eye 1.18 m
+        const sx = C.x + Math.cos(C.yaw) * .37 - Math.sin(C.yaw) * .05, sz = C.z - Math.sin(C.yaw) * .37 - Math.cos(C.yaw) * .05;
+        cam.position.set(sx, C.y + 1.18, sz); cam.rotation.order = 'YXZ'; cam.rotation.set(this.pitch, this.lookYaw + Math.PI, 0);
+      } else { const d = 7.5, yawC = this.lookYaw; const cx = C.x - Math.sin(yawC) * d, cz = C.z - Math.cos(yawC) * d; cam.position.set(cx, Math.max(C.y + 2.6, this.world.height(cx, cz) + .5), cz); cam.lookAt(C.x, C.y + 1.2, C.z); }
+      return;
+    }
     // camera
     const eye = new THREE.Vector3(); this.body.eye(eye);
     if (this.jolt > 0) { this.jolt -= dt; eye.y += Math.sin(this.jolt * 60) * this.jolt * .15; }
@@ -218,4 +270,18 @@ export class Player {
 function distSegHit(ax, az, bx, bz, w) { // do segments a-b and wall w intersect?
   const [cx, cz, dx, dz] = w; const d = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx); if (Math.abs(d) < 1e-9) return false;
   const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / d, u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / d; return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+function makeCar() { // the family sedan (dark blue-gray), with a dashboard and wheel you see from the driver's seat
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(MODELS[0].geo(), new THREE.MeshLambertMaterial({ vertexColors: true })); const col = body.geometry.attributes.color; const tint = new THREE.Color('#3e4a5c');
+  for (let i = 0; i < col.count; i++) if (col.getX(i) > .99 && col.getY(i) > .99 && col.getZ(i) > .99) col.setXYZ(i, tint.r, tint.g, tint.b);
+  body.castShadow = true; g.add(body);
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(1.6, .32, .5), new THREE.MeshLambertMaterial({ color: '#202225' })); dash.position.set(0, .98, .62); g.add(dash);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(.19, .025, 6, 18), new THREE.MeshLambertMaterial({ color: '#151515' })); wheel.position.set(.37, 1.05, .36); wheel.rotation.x = -.35; g.add(wheel);
+  const cluster = new THREE.Mesh(new THREE.PlaneGeometry(.34, .1), new THREE.MeshBasicMaterial({ color: '#7fd0ff' })); cluster.position.set(.37, 1.13, .58); cluster.rotation.x = -1.0; cluster.rotation.y = Math.PI; g.add(cluster);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(.5, .7, .12), new THREE.MeshLambertMaterial({ color: '#2b2b2e' })); seat.position.set(.37, .95, -.25); g.add(seat);
+  const brake = new THREE.Mesh(new THREE.BoxGeometry(1.5, .1, .04), new THREE.MeshBasicMaterial({ color: '#5a0d0d' })); brake.position.set(0, .74, -2.44); g.add(brake);
+  g.userData.wheel = wheel; g.userData.brake = brake;
+  return g;
 }

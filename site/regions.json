@@ -1,0 +1,6 @@
+[
+  { "id": "brick", "name": "Brick", "base": "data/", "lat": 40.06, "lon": -74.11, "home": true },
+  { "id": "ac", "name": "Atlantic City", "base": "regions/ac/", "lat": 39.36, "lon": -74.43, "spawn": "^Caesars Atlantic City$", "sub": "Resorts · Caesars · the Boardwalk" },
+  { "id": "mates", "name": "MATES (Manahawkin)", "base": "regions/mates/", "lat": 39.70, "lon": -74.27, "spawn": "Marine Academy of Technology", "sub": "Marine Academy of Technology & Environmental Science" },
+  { "id": "ibsp", "name": "Sedge Island / Island Beach", "base": "regions/ibsp/", "lat": 39.80, "lon": -74.09, "spawn": "^Sedge Islands$", "sub": "Island Beach State Park, Barnegat Bay" }
+]

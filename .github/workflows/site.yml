@@ -25,6 +25,13 @@ jobs:
         with: { python-version: '3.12' }
       - run: pip install numpy pillow
       - run: python tools/bake.py raw site/data
+      - name: other NJ regions (branches data-<region>)
+        run: |
+          for r in ac mates ibsp; do
+            if git ls-remote --exit-code origin "data-$r" >/dev/null; then
+              git fetch -q --depth 1 origin "data-$r" && rm -rf "raw-$r" && git worktree add -q "raw-$r" FETCH_HEAD && python tools/bake.py "raw-$r" "site/regions/$r" | tail -2
+            fi
+          done
       - run: node tools/check.mjs site
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
