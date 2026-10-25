@@ -4,6 +4,8 @@ Coordinates: local metres, x east, z south (three.js: -z is north), origin at bb
 Ints are decimetres to keep the JSON small."""
 import sys, os, json, gzip, math, base64, random, hashlib, re
 import numpy as np
+import multiprocessing as mp
+PAR = 1 if os.name == 'nt' else max(1, int(os.environ.get('BAKE_JOBS', os.cpu_count() or 1)))   # worker processes (fork): the heavy loops run in parallel on Linux
 from PIL import Image, ImageDraw
 RAW, OUT = sys.argv[1], sys.argv[2]
 os.makedirs(os.path.join(OUT, "tiles"), exist_ok=True)
@@ -423,9 +425,14 @@ if os.path.exists(os.path.join(RAW, "ortho.jpg")):
     Image.MAX_IMAGE_PIXELS = None
     OG = json.load(open(os.path.join(RAW, "ortho.json"))); src = np.asarray(Image.open(os.path.join(RAW, "ortho.jpg")).convert("RGB"))
     CL = np.zeros(src.shape[:2], np.uint8); M8 = 12
-    for r0 in range(0, src.shape[0], 400):
+    def _strip(r0):  # one 400-row strip (with a 12-row margin for the filters), classified in a worker process (fork shares `src`)
         a0, a1 = max(0, r0 - M8), min(src.shape[0], r0 + 400 + M8)
-        c = OC.majority(OC.classify(src[a0:a1])); CL[r0:min(src.shape[0], r0 + 400)] = c[r0 - a0:r0 - a0 + min(400, src.shape[0] - r0)]
+        c = OC.majority(OC.classify(src[a0:a1])); return r0, c[r0 - a0:r0 - a0 + min(400, src.shape[0] - r0)]
+    if PAR > 1:
+        with mp.get_context("fork").Pool(PAR) as pool:
+            for r0, c in pool.imap_unordered(_strip, range(0, src.shape[0], 400)): CL[r0:r0 + c.shape[0]] = c
+    else:
+        for r0 in range(0, src.shape[0], 400): r0, c = _strip(r0); CL[r0:r0 + c.shape[0]] = c
     SRC = src
     os.makedirs(os.path.join(OUT, "ground"), exist_ok=True)
     print("ortho classes", {k: round(float((CL == k).mean()), 3) for k in range(8)})
@@ -563,7 +570,8 @@ for i in range(int(gx0 / TS), int(gx1 / TS)):
 
 # ---------------- write tiles ----------------
 n = int(TS / DS) + 1
-for (i, j), t in tiles.items():
+def _write_tile(item):
+    (i, j), t = item
     ox = int(round((i * TS - gx0) / DS)); oz = int(round((j * TS - gz0) / DS))
     rows = np.clip(oz + np.arange(n), 0, NZ - 1); cols = np.clip(ox + np.arange(n), 0, NX - 1)  # edge tiles repeat the border
     sub = G[np.ix_(rows, cols)]
@@ -574,6 +582,10 @@ for (i, j), t in tiles.items():
         if 0 <= c0 and 0 <= r0 and c0 + n4 <= CL.shape[1] and r0 + n4 <= CL.shape[0]: OC.to_png(CL[r0:r0 + n4, c0:c0 + n4], os.path.join(OUT, "ground", f"{i}_{j}.png")); t["g"] = 1
     with open(os.path.join(OUT, "tiles", f"{i}_{j}.json"), "w") as f:
         json.dump(t, f, separators=(",", ":"))
+if PAR > 1:
+    with mp.get_context("fork").Pool(PAR) as pool: pool.map(_write_tile, list(tiles.items()), chunksize=8)
+else:
+    for it in tiles.items(): _write_tile(it)
 # ---------------- addresses (public OSM data; used to find a home by street address) ----------------
 addr = []
 try:

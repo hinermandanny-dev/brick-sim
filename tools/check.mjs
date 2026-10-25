@@ -29,4 +29,16 @@ if (fs.existsSync(path.join(D, 'meta.json'))) {
   const names = meta.pois.map(p => p[0]).join('\n');
   for (const re of [/Memorial High/i, /Brick Township High/i, /Veterans Memorial Middle/i, /Lake Riviera Middle/i, /Midstreams Elementary/i, /Walmart/i]) if (!re.test(names)) fail('missing place ' + re); // Dan named these: they must resolve
 }
+// 5. every other region (Atlantic City, MATES, Island Beach ...): same sanity, and its named start place must resolve
+const regs = fs.existsSync(path.join(site, 'regions.json')) ? JSON.parse(fs.readFileSync(path.join(site, 'regions.json'))) : [];
+for (const rg of regs) {
+  if (rg.home) continue; const dir = path.join(site, rg.base); const tag = rg.id + ': ';
+  if (!fs.existsSync(path.join(dir, 'meta.json'))) { console.log('skip ' + tag + 'not baked here'); continue; }
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'))), roads = JSON.parse(fs.readFileSync(path.join(dir, 'roads.json')));
+  if (meta.tiles.length < 1) fail(tag + 'no tiles'); else ok(tag + meta.tiles.length + ' tiles, ' + roads.edges.length + ' road edges');
+  if (fs.statSync(path.join(dir, 'dem.bin')).size !== meta.demNX * meta.demNZ * 2) fail(tag + 'dem.bin size');
+  let broken = 0; for (const k of meta.tiles) { const t = JSON.parse(fs.readFileSync(path.join(dir, 'tiles', k + '.json'))); if (Buffer.from(t.dem, 'base64').length !== 51 * 51 * 2) broken++; for (const ei of t.roads) if (!roads.edges[ei]) broken++; }
+  if (broken) fail(tag + broken + ' broken tile records');
+  if (rg.spawn) { const re = new RegExp(rg.spawn, 'i'); if (!meta.pois.some(pp => re.test(pp[0]))) fail(tag + 'start place does not resolve: ' + rg.spawn); else ok(tag + 'start place resolves'); }
+}
 if (bad) { console.log(bad + ' check(s) failed'); process.exit(1); } else console.log('all checks passed');

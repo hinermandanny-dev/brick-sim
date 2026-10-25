@@ -38,6 +38,8 @@ jobs:
           npm i --no-save --silent playwright@1.49.1 && npx playwright install --with-deps chromium >/dev/null
           node tools/render-check.mjs site && node tools/vehicle-check.mjs site
           node tools/audit.mjs site --sites 6 --check
+          node tools/region-check.mjs site
+      - run: node tools/manifest.mjs site
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:
