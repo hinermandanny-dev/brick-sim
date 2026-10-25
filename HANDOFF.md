@@ -74,6 +74,34 @@ heights, roads, lanes and signs come from the data, never invented where data ex
   grocery, where the OGP room is, aisle numbers).
 - Everything free (OSM, USGS, GitHub free tier). Everything off his PC where possible (Actions do the data work).
 
+## NEXT PASS (Dan, 25 Oct 13:03): the huge polish pass - do this BEFORE more NJ
+Dan's words: "a huge polish pass, making houses look actually like the real houses, moving incorrectly placed things,
+fixing the scooter model and adding a screen, and making the scooter riding experience much better, and improving
+infrastructure overall and fixing the sometimes corrupted map". As a list:
+1. **Houses that look like the real ones.** Today every house is a random siding colour, a 45/55 ranch-vs-two-storey
+   guess, a gable roof on the oriented box, and a door/garage guess. Needs per-house truth: storeys, roof shape,
+   siding colour, garage side, porch. Free sources to evaluate: OSM tags where mapped (building:levels, roof:shape,
+   building:colour), Mapillary street-level imagery (free API, CC-BY-SA) for colour/storeys, Ocean County / NJ
+   MOD-IV tax data (year built, style, storeys) if openly downloadable. Dan can correct his own street by eye.
+2. **Move incorrectly placed things.** Audit placement classes, not single cases: driveways on the wrong side /
+   through houses, mailboxes in driveways, parked cars overlapping houses or each other, trees in roads/driveways/
+   houses, street-name posts in the road, lamps over houses, pickup signs / store pieces outside lots, the player car
+   spawn. Build a check that measures each class on the baked data (counts of overlaps) and fails when it regresses.
+3. **Scooter model + screen.** Rebuild the E2 Pro to its real proportions (stem, folding latch, deck shape, rear
+   fender with brake, front light, the dashboard). Add the dashboard screen: live speed, battery bars, mode
+   (ECO/D/S), headlight icon, Bluetooth/lock icon, as on the real E2 Pro display; readable in first person.
+4. **Much better riding.** Feel: acceleration curve per mode, regen braking, coasting, weight shift / lean into turns,
+   handlebar steering visible, bumps from road texture, curb-cut logic, honest top speed per mode, kick animation,
+   sound, camera bob, tyre noise per surface. Tune against real E2 Pro numbers.
+5. **Infrastructure overall.** Faster bake (per-tile parallel), CI screenshot checks (headless render of fixed
+   viewpoints, compare against stored references), the check covering every region, a single double-click
+   PLAY-UPDATE.cmd that pulls the latest data + code onto Dan's PC.
+6. **Fix the "sometimes corrupted map".** Dan sees it intermittently. Likely causes to test first: tiles that fail
+   to fetch or parse (load() deletes the key and never retries -> permanent holes), tiles built while the DEM was
+   still loading, drop/reload races when moving fast (a tile dropped while its build is pending), texture budget on
+   his GPU (768 px canvas per tile x ~30 tiles), z-fighting between road/curb/junction layers. Get Dan's description
+   or a screenshot, reproduce, fix the cause, and add a check that fails on it.
+
 ## New Jersey: what exists (25 Oct, ~05:20 ET, same night session)
 The separate session could not be started automatically (the brain commander rightly refused an unverifiable bus
 order; the scheduled-task tool was denied by the permission system), so the first NJ steps were done in the Brick session.
@@ -93,7 +121,7 @@ order; the scheduled-task tool was denied by the permission system), so the firs
   with real heights: Ocean 218 m, Hard Rock, MGM Tower, Bally's, Claridge, Caesars' Centurion/Ocean towers); the
   Boardwalk drawn 18 m wide in planks; a MATES monument sign at the school's road; the Sedge Island house (no dataset
   has it: hand-built, cedar on pilings with a porch, dock and kayaks, placed on the nearest dry ground to the "Sedge
-  Islands" label: matched to the NJDEP photo Dan picked on 25 Oct: main house, two porta-potties beside it, a narrow channel cut through the marsh where the boats dock (Sedge Shuttle pontoon + kayaks); the exact spot is still approximate).
+  Islands" label: its exact spot and look are approximate; ask Dan / check aerials).
 - **Water fixes** (bake.py): islands stay land (multipolygon holes + place=island polygons), and the ocean, which OSM
   has no polygon for and 3DEP has no data for (stored as exactly 0), becomes sea.
 
