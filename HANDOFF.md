@@ -96,6 +96,13 @@ infrastructure overall and fixing the sometimes corrupted map". As a list:
 5. **Infrastructure overall.** Faster bake (per-tile parallel), CI screenshot checks (headless render of fixed
    viewpoints, compare against stored references), the check covering every region, a single double-click
    PLAY-UPDATE.cmd that pulls the latest data + code onto Dan's PC.
+7. **The car is "crappy and low quality, both visually and feeling-wise" (Dan, 13:04).** Visual: a real interior
+   (dash, gauges with live needles, wheel that turns with the steering, mirrors that reflect, A-pillars, seats, hands
+   on the wheel), a better exterior model of the family car (ask Dan the make/model/colour). Feel: engine/gear model
+   with RPM and shifts, weight transfer and body roll/pitch, tyre grip with understeer, proper brake curve, steering
+   ratio and return-to-centre, engine/road/wind sound, head-bob and camera lean.
+8. **Teleport** (added 25 Oct 13:10): map (M) right-click teleports there; "⤴ go" next to a place teleports to it.
+   Polish: a fade, and keep it working for the car/scooter/walking cases (tested in that pass).
 6. **Fix the "sometimes corrupted map".** Dan sees it intermittently. Likely causes to test first: tiles that fail
    to fetch or parse (load() deletes the key and never retries -> permanent holes), tiles built while the DEM was
    still loading, drop/reload races when moving fast (a tile dropped while its build is pending), texture budget on

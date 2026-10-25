@@ -136,8 +136,22 @@ export class HUD {
     c.onmousedown = (e) => { drag = [e.clientX, e.clientY, this.mapView.x, this.mapView.z, false]; };
     addEventListener('mousemove', (e) => { if (!drag) return; const dx = e.clientX - drag[0], dy = e.clientY - drag[1]; if (Math.abs(dx) + Math.abs(dy) > 4) drag[4] = true; this.mapView.x = drag[2] - dx / this.mapView.s; this.mapView.z = drag[3] - dy / this.mapView.s; });
     addEventListener('mouseup', (e) => { if (drag && !drag[4] && this.mapOpen) { const r = c.getBoundingClientRect(); const x = this.mapView.x + (e.clientX - r.left - r.width / 2) / this.mapView.s, z = this.mapView.z + (e.clientY - r.top - r.height / 2) / this.mapView.s; this.route({ x, z, name: 'the pin' }); } drag = null; });
+    // right-click anywhere on the map: teleport there (onto the nearest road edge, with your scooter or car)
+    c.oncontextmenu = (e) => { e.preventDefault(); const r = c.getBoundingClientRect(); this.teleport(this.mapView.x + (e.clientX - r.left - r.width / 2) / this.mapView.s, this.mapView.z + (e.clientY - r.top - r.height / 2) / this.mapView.s); this.toggleMap(); };
     c.onwheel = (e) => { this.mapView.s = clamp(this.mapView.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), .05, 3); e.preventDefault(); };
     $('mapclose').onclick = () => this.toggleMap();
+  }
+  teleport(x, z) {
+    const P = this.g.player, W = this.g.world, R = this.R;
+    const n = R.nearest(x, z, 400, e => e.cls >= 2); let px = x, pz = z, yaw = P.yaw;
+    if (n) { const a = R.at(n.e, n.s); const off = n.e.way.w / 2 + 1.2; px = n.qx - a.hz * off; pz = n.qz + a.hx * off; yaw = Math.atan2(a.hx, a.hz); }
+    const go = () => {
+      if (P.driving) { P.placeCar(px, pz, yaw); P.x = px; P.z = pz; }
+      else { const riding = P.riding; P.x = px; P.z = pz; P.y = W.height(px, pz) + .1; P.vx = P.vz = 0; P.v = 0; P.yaw = P.lookYaw = yaw;
+        if (riding || !P.sc.locked) { P.sc.x = riding ? px : px + Math.cos(yaw) * 1.1; P.sc.z = riding ? pz : pz - Math.sin(yaw) * 1.1; P.sc.yaw = yaw; } }
+      P.inside = null; P.walls = [];
+    };
+    W.loadAround(px, pz, 300).then(go); go(); toast('Teleported' + (n && n.e.way.n ? ' to ' + n.e.way.n : '') + '.');
   }
   toggleMap() {
     this.mapOpen = !this.mapOpen; $('map').classList.toggle('hidden', !this.mapOpen);
@@ -146,7 +160,7 @@ export class HUD {
       const list = $('dests'); list.innerHTML = '';
       const sec = (t) => { const s = document.createElement('div'); s.className = 'map-sec'; s.textContent = t; s.style.background = 'none'; s.style.cursor = 'default'; list.appendChild(s); };
       sec('PLACES IN ' + this.g.region.name.toUpperCase());
-      for (const d of this.g.dests()) { const el = document.createElement('div'); el.innerHTML = `<b>${d.name}</b><small>${d.sub}</small>`; el.onclick = () => { this.route(d); this.toggleMap(); }; list.appendChild(el); }
+      for (const d of this.g.dests()) { const el = document.createElement('div'); el.innerHTML = `<b>${d.name}</b><small>${d.sub}</small><span class="tp" title="Teleport there">⤴ go</span>`; el.onclick = (ev) => { if (ev.target.classList.contains('tp')) this.teleport(d.x, d.z); else this.route(d); this.toggleMap(); }; list.appendChild(el); }
       sec('DRIVE SOMEWHERE ELSE IN NJ');
       for (const r of this.g.regions) { if (r.id === this.g.region.id) continue; const el = document.createElement('div'); el.innerHTML = `<b>🚗 ${r.name}</b><small>${r.sub || 'home'}</small>`; el.onclick = () => { this.toggleMap(); this.g.travel(r); }; list.appendChild(el); }
     }
