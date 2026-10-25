@@ -419,6 +419,20 @@ for (i, j), t in tiles.items():
     t["water"] = 1 if wm[zz, xx].any() else 0
     with open(os.path.join(OUT, "tiles", f"{i}_{j}.json"), "w") as f:
         json.dump(t, f, separators=(",", ":"))
+# ---------------- addresses (public OSM data; used to find a home by street address) ----------------
+addr = []
+try:
+    for el in L("addr"):
+        tg = el.get("tags", {}); n = tg.get("addr:housenumber"); st = tg.get("addr:street")
+        if not n or not st: continue
+        if el["type"] == "node": lat, lon = el["lat"], el["lon"]
+        elif "center" in el: lat, lon = el["center"]["lat"], el["center"]["lon"]
+        else: continue
+        x, z = P(lat, lon); addr.append([n, st, D(x), D(z)])
+except Exception as ex:
+    print("addr skipped", ex)
+json.dump(addr, open(os.path.join(OUT, "addr.json"), "w"), separators=(",", ":"))
+print("addresses", len(addr))
 # ---------------- graph + meta ----------------
 json.dump({"nodes": gn, "edges": [e[:4] for e in edges], "ways": ways, "restr": restr}, open(os.path.join(OUT, "roads.json"), "w"), separators=(",", ":"))
 pois = []

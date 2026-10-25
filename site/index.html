@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Brick Sim</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="boot">
+  <div class="boot-card">
+    <div class="boot-title">BRICK<span>SIM</span></div>
+    <div class="boot-sub">Brick Township, Ocean County, New Jersey</div>
+    <div class="boot-bar"><i id="bootbar"></i></div>
+    <div id="bootmsg">loading the map…</div>
+    <button id="play" disabled>Start</button>
+    <div class="boot-keys">
+      <b>WASD</b> move · <b>Mouse</b> look · <b>F</b> get on / off scooter · <b>Space</b> kick / jump · <b>Shift</b> brake / run<br>
+      <b>1 2 3</b> ride mode · <b>Z / C</b> blinkers · <b>L</b> light · <b>E</b> use · <b>V</b> camera · <b>M</b> map · <b>P</b> phone · <b>T</b> time
+    </div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="street"></div>
+  <div id="clock"></div>
+  <div id="speedo">
+    <div id="spd">0</div><div class="u">MPH</div>
+    <div id="mode">D</div>
+    <div id="batt"><i id="battbar"></i><span id="battpct">100%</span></div>
+    <div id="blink"><span id="bl">◀</span><span id="br">▶</span></div>
+  </div>
+  <canvas id="mini" width="220" height="220"></canvas>
+  <div id="compass"></div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+  <div id="wp"></div>
+  <div id="cross"></div>
+</div>
+
+<div id="map" class="hidden">
+  <canvas id="mapc"></canvas>
+  <div class="map-side">
+    <div class="map-title">Brick Township</div>
+    <div class="map-hint">Drag to pan · wheel to zoom · click to set GPS · click a place to go there</div>
+    <div id="dests"></div>
+    <button id="mapclose">Close (M)</button>
+  </div>
+</div>
+
+<div id="phone" class="hidden">
+  <div class="ph-frame">
+    <div class="ph-notch"></div>
+    <div class="ph-status"><span id="ph-time">7:42</span><span>▂▄▆ LTE ▮</span></div>
+    <div id="ph-screen"></div>
+    <div class="ph-nav"><span data-nav="back">◁</span><span data-nav="home">○</span><span data-nav="apps">▢</span></div>
+  </div>
+</div>
+
+<div id="closet" class="hidden">
+  <div class="closet-card">
+    <div class="closet-title">Mirror</div>
+    <div id="closet-opts"></div>
+    <button id="closet-done">Done (E)</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
