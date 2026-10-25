@@ -1,7 +1,7 @@
 // You: walking, riding the E2 Pro (real power/drag/battery model), curbs, crashes, camera.
 import * as THREE from '../vendor/three.module.js';
-import { Character, makeScooter } from './character.js';
-import { MODELS } from './cars.js';
+import { Character } from './character.js';
+import { makeScooter, drawScooterScreen, makePathfinder, PathfinderDrive, drawCluster, PF } from './vehicles.js';
 import { clamp, angDiff, toast, prompt, pointInPoly, distSeg } from './util.js';
 
 const MPH = 0.44704;
@@ -13,8 +13,10 @@ export class Player {
     this.scene = scene; this.world = world; this.roads = roads; this.traffic = traffic; this.cam = camera;
     this.body = new Character(outfit); scene.add(this.body.root);
     this.scooter = makeScooter(); scene.add(this.scooter);
-    // the family car (a mid-size sedan): drive it with F at the driver's door
-    this.car = { x: 0, z: 0, y: 0, yaw: 0, v: 0, steer: 0, mesh: makeCar() }; scene.add(this.car.mesh);
+    // the family car: Dan's 2005 Nissan Pathfinder (R51). Drive it with F at the driver's door
+    let cc = '#a9adb1'; try { cc = localStorage.getItem('carColor') || cc; } catch (e) { }
+    this.car = { x: 0, z: 0, y: 0, yaw: 0, v: 0, steer: 0, dyn: new PathfinderDrive(), mesh: makePathfinder(cc, outfit) }; scene.add(this.car.mesh);
+    this.thr = 0; this.brkP = 0; this.bob = 0; this.vib = 0; this.slabD = 0;
     this.driving = false;
     this.x = 0; this.z = 0; this.y = 0; this.yaw = 0; this.vx = 0; this.vz = 0; this.vy = 0;
     this.lookYaw = 0; this.pitch = -0.05; this.fp = true; this.camDist = 4.2;
@@ -36,7 +38,7 @@ export class Player {
     });
     addEventListener('wheel', (e) => { if (!this.fp) this.camDist = clamp(this.camDist + e.deltaY * .004, 2, 12); });
   }
-  placeCar(x, z, yaw) { const C = this.car; C.x = x; C.z = z; C.yaw = yaw; C.v = 0; C.y = this.world.surface(x, z).y; }
+  placeCar(x, z, yaw) { const C = this.car; C.x = x; C.z = z; C.yaw = yaw; C.v = 0; C.dyn.v = 0; C.dyn.rev = false; C.dyn.gear = 1; C.y = this.world.surface(x, z).y; }
   nearCar() { const C = this.car; const sx = C.x + Math.cos(C.yaw) * 1.3, sz = C.z - Math.sin(C.yaw) * 1.3; /* driver's door (left side) */ return Math.hypot(sx - this.x, sz - this.z) < 2.2 || Math.hypot(C.x - this.x, C.z - this.z) < 2.6; }
   enterCar() {
     const C = this.car;
@@ -49,29 +51,24 @@ export class Player {
     toast('W gas · S brake / reverse · A D steer · Space horn · F get out');
   }
   drive(dt, k) {
-    const C = this.car; const m = 1550;
-    const thr = k.KeyW ? 1 : 0, brk = k.KeyS ? 1 : 0;
+    const C = this.car, D = C.dyn;
     const surf = this.world.surface(C.x, C.z); this.surf = surf;
-    const crr = surf.kind === 'grass' ? .05 : .012;
-    let F = 0;
-    if (thr) F = C.v >= -.2 ? Math.min(6200, 105000 / Math.max(Math.abs(C.v), 1)) : 9000; // ~140 kW four-cylinder
-    if (brk) F = C.v > .3 ? -m * 8 : (C.v > -5 ? -3200 : 0);                              // brake, then creep in reverse
-    const drag = .5 * 1.2 * .68 * C.v * Math.abs(C.v) + crr * m * 9.81 * Math.sign(C.v);
-    C.v += (F - drag) / m * dt; if (!thr && !brk && Math.abs(C.v) < .15) C.v = 0;
-    const st = (k.KeyA ? 1 : 0) - (k.KeyD ? 1 : 0); const maxSt = clamp(.58 - Math.abs(C.v) * .016, .07, .58);
-    C.steer += (st * maxSt - C.steer) * (1 - Math.exp(-dt * 5));
-    C.yaw += C.v * Math.tan(C.steer) / 2.78 * dt;
+    const yr = D.step(dt, { thr: !!k.KeyW, brk: !!k.KeyS, left: k.KeyA ? 1 : 0, right: k.KeyD ? 1 : 0 }, surf.kind);
+    C.v = D.v; C.steer = D.steer; C.yaw += yr * dt;
     const nx = C.x + Math.sin(C.yaw) * C.v * dt, nz = C.z + Math.cos(C.yaw) * C.v * dt;
-    const blocked = (x, z) => { for (const [ox, oz] of [[0, 2.3], [0, -2.3], [.9, 0], [-.9, 0]]) { const cx = x + Math.sin(C.yaw) * oz + Math.cos(C.yaw) * ox, cz = z + Math.cos(C.yaw) * oz - Math.sin(C.yaw) * ox; const b = this.world.buildingAt(cx, cz); if (b && !b.enterable && !b.store) return true; } return false; };
-    if (blocked(nx, nz)) { if (Math.abs(C.v) > 7) { toast('Crunch. That will need a body shop.'); this.onCrash && this.onCrash(); } C.v = 0; }
+    const blocked = (x, z) => { for (const [ox, oz] of [[0, 2.35], [0, -2.35], [.92, 1.5], [-.92, 1.5], [.92, -1.5], [-.92, -1.5]]) { const cx = x + Math.sin(C.yaw) * oz + Math.cos(C.yaw) * ox, cz = z + Math.cos(C.yaw) * oz - Math.sin(C.yaw) * ox; const b = this.world.buildingAt(cx, cz); if (b && !b.enterable && !b.store) return true; } return false; };
+    if (blocked(nx, nz)) { if (Math.abs(C.v) > 7) { toast('Crunch. That will need a body shop.'); this.onCrash && this.onCrash(); } D.v = C.v = 0; D.pitchV += 1.5 * Math.sign(D.lonA || 1); }
     else { C.x = nx; C.z = nz; }
-    for (const o of this.traffic.obstacles(C.x, C.z, 10)) { const dx = C.x - o.x, dz = C.z - o.z; const a = dx * o.hx + dz * o.hz, b = -dx * o.hz + dz * o.hx; if (Math.abs(a) < o.L / 2 + 2.2 && Math.abs(b) < o.W / 2 + .85) { if (Math.abs(C.v) > 4) { toast('Fender bender.'); this.onCrash && this.onCrash(); } C.x -= Math.sin(C.yaw) * C.v * dt; C.z -= Math.cos(C.yaw) * C.v * dt; C.v = 0; } }
-    const y2 = this.world.surface(C.x, C.z).y; C.y += (y2 - C.y) * Math.min(1, dt * 10);
+    for (const o of this.traffic.obstacles(C.x, C.z, 10)) { const dx = C.x - o.x, dz = C.z - o.z; const a = dx * o.hx + dz * o.hz, b = -dx * o.hz + dz * o.hx; if (Math.abs(a) < o.L / 2 + 2.3 && Math.abs(b) < o.W / 2 + .9) { if (Math.abs(C.v) > 4) { toast('Fender bender.'); this.onCrash && this.onCrash(); } C.x -= Math.sin(C.yaw) * C.v * dt; C.z -= Math.cos(C.yaw) * C.v * dt; D.v = C.v = 0; } }
+    // suspension follows the ground under each axle (pitch over humps and curb drops), plus fine road texture
+    const f = this.world.surface(C.x + Math.sin(C.yaw) * PF.axF, C.z + Math.cos(C.yaw) * PF.axF).y, r = this.world.surface(C.x + Math.sin(C.yaw) * PF.axR, C.z + Math.cos(C.yaw) * PF.axR).y;
+    C.y += ((f + r) / 2 - C.y) * Math.min(1, dt * 12); C.grade = Math.atan2(f - r, PF.WB);
+    this.vib = (surf.kind === 'grass' ? .012 : surf.kind === 'road' ? .0025 : .005) * Math.min(1, Math.abs(C.v) / 12);
     this.x = C.x; this.z = C.z; this.y = C.y; this.yaw = C.yaw; this.vx = Math.sin(C.yaw) * C.v; this.vz = Math.cos(C.yaw) * C.v;
     if (!this.mouseLookT || performance.now() - this.mouseLookT > 1500) this.lookYaw += angDiff(this.lookYaw, C.yaw) * Math.min(1, dt * 4);
     this.state = 'idle'; this.stats.dist += Math.abs(C.v) * dt; this.stats.top = Math.max(this.stats.top, Math.abs(C.v));
     if (k.Space && !this._hornT) { this._hornT = .6; this.onHorn && this.onHorn(); } if (this._hornT) { this._hornT -= dt; if (this._hornT <= 0) this._hornT = 0; }
-    if (this.world.height(C.x, C.z) < -.5 && !(surf.kind === 'road')) { toast('That is the bay. Back to the road.'); C.v = 0; }
+    if (this.world.height(C.x, C.z) < -.5 && !(surf.kind === 'road')) { toast('That is the bay. Back to the road.'); D.v = C.v = 0; }
   }
   place(x, z, yaw) {
     this.x = x; this.z = z; this.yaw = yaw; this.lookYaw = yaw; this.y = this.world.height(x, z) + .05;
@@ -113,7 +110,11 @@ export class Player {
   }
   ride(dt, k) {
     const md = MODES[this.mode]; const m = M_RIDER + M_SCOOT;
-    const thr = k.KeyW ? 1 : 0, brk = (k.KeyS || k.ShiftLeft || k.ShiftRight) ? 1 : 0;
+    const brk = (k.KeyS || k.ShiftLeft || k.ShiftRight) ? 1 : 0;
+    // thumb throttle: ramps in (softer in ECO), drops fast; brake lever squeezes in over ~0.25 s
+    this.thr += ((k.KeyW ? 1 : 0) - this.thr) * (1 - Math.exp(-dt * (k.KeyW ? [0, 2.2, 3.5, 5][this.mode] : 12)));
+    this.brkP += (brk - this.brkP) * (1 - Math.exp(-dt * (brk ? 9 : 14)));
+    const thr = this.thr > .02 ? this.thr : 0;
     const surf = this.world.surface(this.x, this.z); this.surf = surf;
     const crr = surf.kind === 'grass' ? .055 : surf.kind === 'path' ? .02 : .012;
     // grade from terrain ahead/behind
@@ -123,22 +124,23 @@ export class Player {
     const kickOK = this.v > .83; // E2 Pro: kick to 3 km/h before the motor engages
     if (thr && kickOK && this.batt > 0) {
       const P = 750 * (this.batt > .1 ? 1 : .5);
-      F = Math.min(md.F, P / Math.max(this.v, .5));
+      F = Math.min(md.F, P / Math.max(this.v, .5)) * thr;
       if (this.v > md.v) F = 0; else if (this.v > md.v - .4) F *= (md.v - this.v) / .4;
     }
     if (thr && !kickOK && !this._kickHint) { this._kickHint = true; toast('Kick off first (Space): the motor engages at 3 km/h.'); }
     const drag = .5 * RHO * CDA * this.v * this.v + crr * m * G + m * G * grade;
     let a = (F - drag * Math.sign(this.v || 1)) / m;
-    if (brk) a -= Math.min(4.2, this.v / dt) * (this.v > 0 ? 1 : 0); // E-ABS front + rear drum ≈ 4 m/s²
+    if (this.brkP > .01) a -= Math.min(4.6 * this.brkP, this.v / dt) * (this.v > 0 ? 1 : 0); // front drum + rear E-ABS ≈ 4.6 m/s²
+    else if (!thr && this.v > 1.5) a -= .35; // KERS: the motor drags a little when you let go of the throttle (energy recovery "medium")
     this.v = Math.max(0, this.v + a * dt);
     if (this.v < .05 && !thr) this.v = 0;
     // battery (motor+controller ~80 %, lights 6 W), a little regen on the brake
-    const Pel = F * this.v / .8 + (this.light ? 6 : 2) - (brk ? Math.min(60, this.v * 25) * .3 : 0);
+    const Pel = F * this.v / .8 + (this.light ? 6 : 2) - (this.brkP > .01 ? Math.min(60, this.v * 25) * .3 : (!thr && this.v > 1.5 ? this.v * 8 : 0));
     this.stats.wh += Pel * dt / 3600; this.batt = clamp(this.batt - Pel * dt / 3600 / BATT_WH, 0, 1);
     // steering: bicycle model, less lock at speed
     const st = (k.KeyA ? 1 : 0) - (k.KeyD ? 1 : 0);
-    const maxSt = clamp(.55 - this.v * .055, .1, .55);
-    this.steer += (st * maxSt - this.steer) * (1 - Math.exp(-dt * 7));
+    const maxSt = clamp(.55 - this.v * .06, .06, .55);
+    this.steer += (st * maxSt - this.steer) * (1 - Math.exp(-dt * (st ? 6 : 9)));
     this.yaw += this.v * Math.tan(this.steer) / WB * dt;
     this.lookYaw += angDiff(this.lookYaw, this.yaw) * 0; // free look while riding
     const nx = this.x + Math.sin(this.yaw) * this.v * dt, nz = this.z + Math.cos(this.yaw) * this.v * dt;
@@ -153,6 +155,9 @@ export class Player {
       else if (this.v > 1.4) { this.jolt = .35; this.v *= .6; }
     } else if (dy < -.1 && this.v > 4) this.jolt = .25;
     this.y += (Math.max(s2.y, surf.y) - this.y) * Math.min(1, dt * 18);
+    // what the 10" tyres feel: sidewalk slab joints every 1.5 m, coarse asphalt buzz, grass is rough
+    this.vib = this.v * (surf.kind === 'grass' ? .004 : surf.kind === 'road' ? .0007 : .0012);
+    if (surf.kind === 'sidewalk' || surf.kind === 'path') { this.slabD += this.v * dt; if (this.slabD > 1.5) { this.slabD -= 1.5; if (this.v > 1.5) { this.jolt = Math.max(this.jolt, .08); this.onSlab && this.onSlab(this.v); } } }
     this.vx = Math.sin(this.yaw) * this.v; this.vz = Math.cos(this.yaw) * this.v;
     this.sc.x = this.x; this.sc.z = this.z; this.sc.yaw = this.yaw; this.sc.y = this.y;
     this.state = this.kickT > 0 ? 'kick' : 'ride';
@@ -232,28 +237,38 @@ export class Player {
     if (this.sc.carried) { S.position.y = this.y + .25; S.rotation.z = 0; S.rotation.x = -1.35; }
     else S.rotation.x = 0;
     if (S.userData.fw) { const r = this.v / .127 * dt; S.userData.fw.rotation.x += r; S.userData.rw.rotation.x += r; }
+    if (S.userData.steer) S.userData.steer.rotation.y = this.riding ? this.steer * 1.15 : (this.scDown ? 0 : .25);
+    if (S.userData.screen && (this.riding || Math.hypot(this.sc.x - this.x, this.sc.z - this.z) < 4)) drawScooterScreen(S, { speed: this.v, batt: this.batt, mode: this.mode, light: this.light, locked: this.sc.locked, on: this.riding || this.batt > 0 && !this.sc.locked && !this.sc.folded, kmh: false });
     S.userData.kick.visible = !this.riding;
     S.userData.lights.color.set(this.light ? '#fff6d8' : '#6b6b62');
     // the car
-    const Cm = this.car.mesh; Cm.position.set(this.car.x, this.car.y, this.car.z); Cm.rotation.y = this.car.yaw;
-    Cm.userData.wheel.rotation.z = -this.car.steer * 6; Cm.userData.brake.material.color.set(this.driving && this.keys.KeyS ? '#ff2a1f' : '#5a0d0d');
+    const C0 = this.car, D0 = C0.dyn, Cm = C0.mesh, U = Cm.userData;
+    Cm.position.set(C0.x, C0.y, C0.z); Cm.rotation.order = 'YXZ'; Cm.rotation.set(-(C0.grade || 0), C0.yaw, 0);
+    U.body.rotation.set(-D0.pitch, 0, D0.roll); U.body.position.y = (Math.random() - .5) * (this.driving ? this.vib : 0);
+    for (const w of U.wheels) { w.spin.rotation.x += C0.v / PF.r * dt; if (w.front) w.hub.rotation.y = C0.steer; }
+    U.wheelG.rotation.z = -D0.hand; // the wheel turns with your hands on it
+    for (const o of U.body.children) if (o.userData.tail) o.material.color.set(this.driving && D0.brk > .1 ? '#ff2a1f' : '#6a0c0c');
+    U.cab.visible = !this.driving || this.fp; for (const h of U.hands) h.visible = this.driving;
+    if (this.driving && (U.cluster.t -= dt) <= 0) { U.cluster.t = 1 / 20; drawCluster(C0, { rpm: D0.rpm, mph: Math.abs(D0.v) / 0.44704, fuel: D0.fuel, temp: D0.temp, sel: D0.sel, odo: D0.odo, blink: this.blink }); }
     if (this.driving && !this.camOverride) {
       const cam = this.cam, C = this.car;
-      if (this.fp) { // driver's seat (left), eye 1.18 m
-        const sx = C.x + Math.cos(C.yaw) * .37 - Math.sin(C.yaw) * .05, sz = C.z - Math.sin(C.yaw) * .37 - Math.cos(C.yaw) * .05;
-        cam.position.set(sx, C.y + 1.18, sz); cam.rotation.order = 'YXZ'; cam.rotation.set(this.pitch, this.lookYaw + Math.PI, 0);
+      if (this.fp) { // driver's seat (left), eye 1.43 m: R51s sit tall; your head sways a little against the body roll
+        const D = C.dyn, e = new THREE.Vector3(PF.eye[0] - D.latA * .006, PF.eye[1] - D.lonA * .004, PF.eye[2] + D.lonA * .006);
+        Cm.updateMatrixWorld(true); e.applyMatrix4(U.body.matrixWorld);
+        cam.position.copy(e); cam.rotation.order = 'YXZ'; cam.rotation.set(this.pitch - D.pitch * .6 - (C.grade || 0), this.lookYaw + Math.PI, D.roll * .55);
       } else { const d = 7.5, yawC = this.lookYaw; const cx = C.x - Math.sin(yawC) * d, cz = C.z - Math.cos(yawC) * d; cam.position.set(cx, Math.max(C.y + 2.6, this.world.height(cx, cz) + .5), cz); cam.lookAt(C.x, C.y + 1.2, C.z); }
       return;
     }
     // camera
     const eye = new THREE.Vector3(); this.body.eye(eye);
     if (this.jolt > 0) { this.jolt -= dt; eye.y += Math.sin(this.jolt * 60) * this.jolt * .15; }
+    if (this.riding) { this.bob += dt * (8 + this.v); eye.y += (Math.random() - .5) * this.vib + Math.sin(this.bob) * .004 * Math.min(1, this.v / 3); }
     const cam = this.cam;
     if (this.camOverride) { this.camOverride(cam, dt); return; }
     if (this.fp) {
       const fx = Math.sin(this.lookYaw), fz = Math.cos(this.lookYaw);
       cam.position.copy(eye).add(new THREE.Vector3(fx * .09, 0, fz * .09));
-      cam.rotation.order = 'YXZ'; cam.rotation.set(this.pitch, this.lookYaw + Math.PI, lean * .5);
+      cam.rotation.order = 'YXZ'; cam.rotation.set(this.pitch, this.lookYaw + Math.PI, lean * .7); // you lean with the scooter, a bit less than it
     } else {
       const d = this.camDist; const yawC = this.lookYaw;
       const tx = this.x, ty = this.y + 1.55, tz = this.z;
@@ -272,16 +287,4 @@ function distSegHit(ax, az, bx, bz, w) { // do segments a-b and wall w intersect
   const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / d, u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / d; return t > 0 && t < 1 && u > 0 && u < 1;
 }
 
-function makeCar() { // the family sedan (dark blue-gray), with a dashboard and wheel you see from the driver's seat
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(MODELS[0].geo(), new THREE.MeshLambertMaterial({ vertexColors: true })); const col = body.geometry.attributes.color; const tint = new THREE.Color('#3e4a5c');
-  for (let i = 0; i < col.count; i++) if (col.getX(i) > .99 && col.getY(i) > .99 && col.getZ(i) > .99) col.setXYZ(i, tint.r, tint.g, tint.b);
-  body.castShadow = true; g.add(body);
-  const dash = new THREE.Mesh(new THREE.BoxGeometry(1.6, .32, .5), new THREE.MeshLambertMaterial({ color: '#202225' })); dash.position.set(0, .98, .62); g.add(dash);
-  const wheel = new THREE.Mesh(new THREE.TorusGeometry(.19, .025, 6, 18), new THREE.MeshLambertMaterial({ color: '#151515' })); wheel.position.set(.37, 1.05, .36); wheel.rotation.x = -.35; g.add(wheel);
-  const cluster = new THREE.Mesh(new THREE.PlaneGeometry(.34, .1), new THREE.MeshBasicMaterial({ color: '#7fd0ff' })); cluster.position.set(.37, 1.13, .58); cluster.rotation.x = -1.0; cluster.rotation.y = Math.PI; g.add(cluster);
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(.5, .7, .12), new THREE.MeshLambertMaterial({ color: '#2b2b2e' })); seat.position.set(.37, .95, -.25); g.add(seat);
-  const brake = new THREE.Mesh(new THREE.BoxGeometry(1.5, .1, .04), new THREE.MeshBasicMaterial({ color: '#5a0d0d' })); brake.position.set(0, .74, -2.44); g.add(brake);
-  g.userData.wheel = wheel; g.userData.brake = brake;
-  return g;
-}
+// (the placeholder sedan makeCar() was replaced by Dan's Pathfinder in vehicles.js, 25 Oct)

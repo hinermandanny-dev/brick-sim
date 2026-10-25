@@ -10,6 +10,11 @@ export class Audio {
     const loop = (filterType, freq, q) => { const s = c.createBufferSource(); s.buffer = noise; s.loop = true; const f = c.createBiquadFilter(); f.type = filterType; f.frequency.value = freq; f.Q.value = q; const g = c.createGain(); g.gain.value = 0; s.connect(f); f.connect(g); g.connect(this.master); s.start(); return { f, g }; };
     this.wind = loop('lowpass', 500, .5); this.road = loop('bandpass', 180, .8); this.traffic = loop('lowpass', 260, .6);
     this.motor = c.createOscillator(); this.motor.type = 'sawtooth'; this.mg = c.createGain(); this.mg.gain.value = 0; const mf = c.createBiquadFilter(); mf.type = 'bandpass'; mf.frequency.value = 900; mf.Q.value = 3; this.motor.connect(mf); mf.connect(this.mg); this.mg.connect(this.master); this.motor.start();
+    // the Pathfinder's 4.0 V6: firing frequency (3 per rev) + half-order rumble through a throttle-opened low-pass; tyre squeal
+    this.eng = [c.createOscillator(), c.createOscillator()]; this.eng[0].type = 'sawtooth'; this.eng[1].type = 'square';
+    this.ef = c.createBiquadFilter(); this.ef.type = 'lowpass'; this.ef.frequency.value = 300; this.ef.Q.value = 2; this.eg = c.createGain(); this.eg.gain.value = 0;
+    for (const o of this.eng) { o.connect(this.ef); o.start(); } this.ef.connect(this.eg); this.eg.connect(this.master);
+    this.squeal = loop('bandpass', 1150, 7);
     this.amb = { t: 0 };
   }
   update(dt, st) {
@@ -18,11 +23,17 @@ export class Audio {
     this.wind.g.gain.setTargetAtTime(Math.min(.35, v * v * .004), t, .1); this.wind.f.frequency.setTargetAtTime(300 + v * 60, t, .1);
     this.road.g.gain.setTargetAtTime(st.riding ? Math.min(.18, v * .025) * (st.grass ? 2 : 1) : 0, t, .1);
     this.motor.frequency.setTargetAtTime(120 + v * 95, t, .05); this.mg.gain.setTargetAtTime(st.riding && st.throttle ? .05 + v * .006 : st.riding ? .012 : 0, t, .08);
-    this.traffic.g.gain.setTargetAtTime(Math.min(.25, st.carNear * .5), t, .2);
+    const dr = st.driving; if (dr) { this.road.g.gain.setTargetAtTime(Math.min(.14, v * .008), t, .1); this.road.f.frequency.setTargetAtTime(120 + v * 4, t, .1); this.wind.g.gain.setTargetAtTime(Math.min(.12, v * v * .0007), t, .1); }
+    const f0 = Math.max(30, (st.rpm || 650) / 60 * 3); this.eng[0].frequency.setTargetAtTime(f0, t, .03); this.eng[1].frequency.setTargetAtTime(f0 / 2, t, .03);
+    this.ef.frequency.setTargetAtTime(220 + (st.rpm || 650) * .12 + (st.gas || 0) * 900, t, .05); this.eg.gain.setTargetAtTime(dr ? .05 + (st.gas || 0) * .09 + (st.rpm || 650) / 7000 * .05 : 0, t, .08);
+    this.squeal.g.gain.setTargetAtTime(dr ? (st.squeal || 0) * .16 : 0, t, .05);
+    if (dr) this.mg.gain.setTargetAtTime(0, t, .05);
+        this.traffic.g.gain.setTargetAtTime(Math.min(.25, st.carNear * .5), t, .2);
     this.amb.t -= dt;
     if (this.amb.t < 0) { this.amb.t = 1.5 + Math.random() * 4; if (st.inside) return; if (st.night > .6) this.cricket(); else if (Math.random() < .6) this.bird(); }
   }
   tone(f, dur, type = 'sine', vol = .2, slide = 0) { if (!this.ok) return; const c = this.c, o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.value = f; if (slide) o.frequency.linearRampToValueAtTime(f + slide, c.currentTime + dur); g.gain.value = vol; g.gain.exponentialRampToValueAtTime(.001, c.currentTime + dur); o.connect(g); g.connect(this.master); o.start(); o.stop(c.currentTime + dur); }
+  slab(v) { if (!this.ok) return; this.tone(95 + Math.random() * 20, .05, 'sine', Math.min(.12, v * .02)); }
   beep(ok = true) { this.tone(ok ? 1850 : 400, .09, 'square', .08); }
   chirp() { this.tone(1200, .05, 'square', .05); setTimeout(() => this.tone(900, .06, 'square', .04), 70); }
   horn() { this.tone(370, .45, 'sawtooth', .12); this.tone(466, .45, 'sawtooth', .1); }

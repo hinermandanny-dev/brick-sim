@@ -9,6 +9,7 @@ import { Phone } from './phone.js';
 import { Store } from './store.js';
 import { Home } from './home.js';
 import { Audio } from './audio.js';
+import { renderMirrors } from './vehicles.js';
 import { Peds } from './peds.js';
 import { SetPieces } from './setpieces.js';
 import { travel } from './travel.js';
@@ -55,7 +56,7 @@ class Game {
     this.peds = new Peds(this.scene, this.world, this.roads); this.traffic.peds = this.peds.list;
     this.traffic.onHorn = (c) => { if (Math.hypot(c.x - this.player.x, c.z - this.player.z) < 40) this.audio.horn(); };
     this.store.onBeep = (ok) => this.audio.beep(ok);
-    this.player.onKick = () => this.audio.kick(); this.player.onCrash = () => this.audio.thud(); this.player.onHorn = () => this.audio.horn();
+    this.player.onKick = () => this.audio.kick(); this.player.onSlab = (v) => this.audio.slab(v); this.player.onCrash = () => this.audio.thud(); this.player.onHorn = () => this.audio.horn();
     // time: today's date, 7:25 am (first shift starts at 8)
     const now = new Date(); this.day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()); this.t = arrive ? arrive.t : 7.42 * 3600; this.timeScale = 1;
     // where is home? (a local, git-ignored file, or one you set in game)
@@ -185,7 +186,8 @@ class Game {
     if (it && this.store.built) { const [x, z] = this.store.G(it.loc.u, it.loc.v); this.marker.visible = true; this.marker.position.set(x, this.store.floorY + .03, z); this.marker.material.opacity = .6 + Math.sin(now / 200) * .3; } else this.marker.visible = false;
     // sound
     let carNear = 0; for (const c of this.traffic.cars) if (c.x !== undefined) { const d = Math.hypot(c.x - P.x, c.z - P.z); if (d < 60) carNear += c.v / 15 * (1 - d / 60); }
-    this.audio.update(dt, { v: P.speed, riding: P.riding, throttle: P.keys.KeyW, grass: P.surf && P.surf.kind === 'grass', carNear, night: sun.night, inside: !!P.inside });
+    this.audio.update(dt, { driving: P.driving, rpm: P.car.dyn.rpm, gas: P.car.dyn.thr, squeal: P.car.dyn.squeal, v: P.speed, riding: P.riding, throttle: P.keys.KeyW, grass: P.surf && P.surf.kind === 'grass', carNear, night: sun.night, inside: !!P.inside });
+    if (P.driving && P.fp && !this.low) renderMirrors(P.car, this.renderer, this.scene); // one mirror per frame, round-robin
     this.renderer.render(this.scene, this.camera);
   }
 }

@@ -160,26 +160,4 @@ export class Character {
 }
 
 // Segway Ninebot E2 Pro (to scale: 10" wheels, 1.1 m stem, ~15 cm deck) with Dan's velcro drink holder
-export function makeScooter() {
-  const g = new THREE.Group();
-  const dark = lam('#2d3033'), gray = lam('#55595e'), rub = lam('#1a1a1b'), acc = lam('#b9bdc2'), led = new THREE.MeshBasicMaterial({ color: '#fff6d8' }), red = new THREE.MeshBasicMaterial({ color: '#8a1010' });
-  const m = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
-  m(box(.17, .06, .62), dark, 0, .135, -.02);               // deck
-  m(box(.15, .006, .56), lam('#3a3d40'), 0, .168, -.02);    // grip tape
-  m(box(.08, .04, .15), dark, 0, .2, .3).rotation.x = -.4;  // neck
-  const stem = m(box(.045, 1.0, .045), gray, 0, .66, .33); stem.rotation.x = -.13;
-  m(box(.56, .03, .03), gray, 0, 1.16, .395);              // handlebar
-  m(box(.11, .038, .038), rub, .25, 1.16, .395); m(box(.11, .038, .038), rub, -.25, 1.16, .395);
-  m(box(.07, .03, .05), lam('#1e2226'), 0, 1.18, .38);     // display
-  m(box(.05, .03, .02), led, 0, .9, .385);                  // headlight on the stem
-  m(box(.06, .05, .03), red, 0, .17, -.355);                // tail light
-  m(box(.13, .03, .22), dark, 0, .25, -.33).rotation.x = .25; // rear fender
-  // drink holder velcroed to the stem
-  const cup = m(new THREE.CylinderGeometry(.045, .04, .11, 10), lam('#3d3f42'), .055, .82, .35);
-  m(box(.03, .05, .05), lam('#222'), .03, .82, .35);
-  const wheel = (z) => { const w = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(.127, .127, .055, 14), rub); t.rotation.z = Math.PI / 2; const h = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .06, 10), acc); h.rotation.z = Math.PI / 2; w.add(t, h); w.position.set(0, .127, z); g.add(w); return w; };
-  g.userData.fw = wheel(.36); g.userData.rw = wheel(-.36);
-  const ks = m(box(.02, .14, .02), gray, -.08, .07, -.05); g.userData.kick = ks;
-  g.userData.lights = led;
-  return g;
-}
+// (the scooter model moved to vehicles.js: the rebuilt E2 Pro with its steerable bar and live dashboard, 25 Oct)
