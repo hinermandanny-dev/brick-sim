@@ -46,7 +46,7 @@ export class Store {
     if (this.built) return; const P = this.find(); if (!P) return;
     let cx = 0, cz = 0; for (let q = 0; q < P.length; q += 2) { cx += P[q]; cz += P[q + 1]; } cx /= P.length / 2; cz /= P.length / 2;
     this.cx = cx; this.cz = cz;
-    if (Math.hypot(this.player.x - cx, this.player.z - cz) > 450 || !this.world.ready(cx, cz)) return;
+    if (Math.hypot(this.player.x - cx, this.player.z - cz) > 1300 || !this.world.ready(cx, cz)) return; // built whenever its tile is loaded: the store IS the building
     this.build(P); this.built = true;
   }
   build(P) {
@@ -57,7 +57,9 @@ export class Store {
       const a = Math.atan2(P[(q + 3) % P.length] - P[q + 1], P[(q + 2) % P.length] - P[q]), c = Math.cos(a), s = Math.sin(a);
       let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
       for (let k = 0; k < P.length; k += 2) { const u = P[k] * c + P[k + 1] * s, v = -P[k] * s + P[k + 1] * c; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
-      const ar = (u1 - u0) * (v1 - v0); if (!best || ar < best.ar) best = { ar, a, u0, u1, v0, v1 };
+      // big boxes are built square to their longest wall: orient on the longest edge, not the min-area box
+      const el = Math.hypot(P[(q + 2) % P.length] - P[q], P[(q + 3) % P.length] - P[q + 1]);
+      if (!best || el > best.el) best = { el, a, u0, u1, v0, v1 };
     }
     let { a, u0, u1, v0, v1 } = best; if (v1 - v0 > u1 - u0) { a += Math.PI / 2; [u0, u1, v0, v1] = [v0, v1, -u1, -u0]; }
     const c = Math.cos(a), s = Math.sin(a);
@@ -72,11 +74,25 @@ export class Store {
       px += cx2 * A; pz += cz2 * A; pw += A;
     }
     let frontIsV0;
-    if (pw > 500) { px /= pw; pz /= pw; frontIsV0 = Math.hypot(mA[0] - px, mA[1] - pz) <= Math.hypot(mB[0] - px, mB[1] - pz); }
+    // strongest evidence: mapped doors. Loading docks / service doors are the back; customer entrances the front
+    const doors = []; for (const t of this.world.tiles.values()) for (const pr of t.d.props) if (pr[0] === 'door_service' || pr[0] === 'door_main') { const x = pr[1] / 10, z = pr[2] / 10; if (Math.hypot(x - this.cx, z - this.cz) < 160) doors.push([pr[0], x, z]); }
+    const svc = doors.filter(d => d[0] === 'door_service'), mainD = doors.filter(d => d[0] === 'door_main');
+    if (mainD.length) { const [, x, z] = mainD[0]; frontIsV0 = Math.hypot(mA[0] - x, mA[1] - z) <= Math.hypot(mB[0] - x, mB[1] - z); }
+    else if (svc.length) { const sx = svc.reduce((a, d) => a + d[1], 0) / svc.length, sz = svc.reduce((a, d) => a + d[2], 0) / svc.length; frontIsV0 = Math.hypot(mA[0] - sx, mA[1] - sz) > Math.hypot(mB[0] - sx, mB[1] - sz); }
+    else if (pw > 500) { px /= pw; pz /= pw; frontIsV0 = Math.hypot(mA[0] - px, mA[1] - pz) <= Math.hypot(mB[0] - px, mB[1] - pz); }
     else { const near = (x, z) => { const h = this.roads.nearest(x, z, 400, e => e.cls >= 5); return h ? h.d : 999; }; frontIsV0 = near(...mA) <= near(...mB); }
     // local frame: u along the front (0..L), v depth from the front wall (0..D)
-    const L = u1 - u0, D = v1 - v0;
-    const F = frontIsV0 ? (u, v) => Wd(u0 + u, v0 + v) : (u, v) => Wd(u1 - u, v1 - v);
+    let L = u1 - u0, D = v1 - v0;
+    const F0 = frontIsV0 ? (u, v) => Wd(u0 + u, v0 + v) : (u, v) => Wd(u1 - u, v1 - v);
+    // real footprints are not rectangles (chamfered corners, notches, the 2013 grocery addition): shrink the frame
+    // to the rectangle that is actually inside the walls, so nothing (the OGP room!) lands outside the building
+    const inP = (u, v) => pointInPoly(...F0(u, v), P);
+    let ua = 0, ub = L, va = 0, vb = D;
+    for (let k = 3; k <= 7; k++) { const v = D * k / 10; let a2 = 0; while (a2 < L / 2 && !inP(a2, v)) a2 += .5; let b2 = L; while (b2 > L / 2 && !inP(b2, v)) b2 -= .5; ua = Math.max(ua, a2); ub = Math.min(ub, b2); }
+    for (let k = 3; k <= 7; k++) { const u = ua + (ub - ua) * k / 10; let a2 = 0; while (a2 < D / 2 && !inP(u, a2)) a2 += .5; let b2 = D; while (b2 > D / 2 && !inP(u, b2)) b2 -= .5; va = Math.max(va, a2); vb = Math.min(vb, b2); }
+    ua += .3; va += .3; ub -= .3; vb -= .3;
+    L = ub - ua; D = vb - va;
+    const F = (u, v) => F0(ua + u, va + v);
     const yawF = Math.atan2(...(() => { const [ax, az] = F(0, 0), [bx, bz] = F(0, 1); return [bx - ax, bz - az]; })()); // +v direction
     this.F = F; this.L = L; this.D = D;
     // which end is grocery: the end nearer the bigger open lot (pickup spots). Default: u=0 end.
@@ -87,14 +103,20 @@ export class Store {
     this.floorY = y0;
     const grp = new THREE.Group(); this.g = grp; this.scene.add(grp);
     const yaw = Math.atan2(...(() => { const [ax, az] = G(0, 0), [bx, bz] = G(1, 0); return [bx - ax, bz - az]; })()) - Math.PI / 2; // local +x along u
+    const frontV = (u) => { let v = 0; while (v > -40 && pointInPoly(...G(u, v - .2), P)) v -= .2; return v; }; // the real facade in front of u
+    this.frontV = frontV;
     const [vox, voz] = G(0, 0), [v1x, v1z] = G(0, 1); const out = Math.atan2(-(v1x - vox), -(v1z - voz)), inn = out + Math.PI; // plane yaw facing out of / into the store
     const box = (u, v, y, su, sy, sv, mat) => { const [x, z] = G(u, v); const o = new THREE.Mesh(new THREE.BoxGeometry(su, sy, sv), mat); o.position.set(x, y0 + y, z); o.rotation.y = yaw; grp.add(o); return o; };
     const M = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
     const floor = M('#d9d6cd'), shelf = M('#e8e8e6'), shelfDk = M('#9aa0a6'), cooler = M('#f4f5f6'), glass = new THREE.MeshPhongMaterial({ color: '#cfe6f2', transparent: true, opacity: .35, shininess: 90 }), blue = M('#0b4fa8'), yel = M('#ffc220'), wall = M('#ecebe6', { side: THREE.DoubleSide, emissive: '#3a3a38' }), ceil = M('#c8c9c4', { side: THREE.DoubleSide, emissive: '#77776f' });
-    // shell: floor, ceiling, inner walls (so you can see them from inside)
-    const fl = box(L / 2, D / 2, -.08, L, .16, D, floor); fl.receiveShadow = true;
-    box(L / 2, D / 2, 7.2, L, .1, D, ceil);
-    for (const [u, v, su, sv] of [[L / 2, .15, L, .1], [L / 2, D - .15, L, .1], [.15, D / 2, .1, D], [L - .15, D / 2, .1, D]]) box(u, v, 3.6, su, 7.2, sv, wall);
+    // shell: the store draws its own building along the REAL footprint (the world skips Walmart's walls), so the
+    // entrances are real openings you walk through
+    const fl = box(L / 2, D / 2, -.08, L + 1, .16, D + 1, floor); fl.receiveShadow = true;
+    const H = 7.6;
+    { const shp = new THREE.Shape(); for (let q = 0; q < P.length; q += 2) q ? shp.lineTo(P[q], P[q + 1]) : shp.moveTo(P[q], P[q + 1]);
+      const fl2 = new THREE.Mesh(new THREE.ShapeGeometry(shp), floor); fl2.rotation.x = Math.PI / 2; fl2.position.y = y0 + .005; fl2.material.side = THREE.DoubleSide; grp.add(fl2);
+      const rf = new THREE.Mesh(new THREE.ShapeGeometry(shp), ceil); rf.rotation.x = Math.PI / 2; rf.position.y = y0 + H; grp.add(rf);
+      const rfo = new THREE.Mesh(new THREE.ShapeGeometry(shp), M('#d9d6cf', { side: THREE.DoubleSide })); rfo.rotation.x = Math.PI / 2; rfo.position.y = y0 + H + .9; grp.add(rfo); }
     // ceiling light strips
     const lightM = new THREE.MeshBasicMaterial({ color: '#fbfbf4' });
     for (let u = 6; u < L - 4; u += 6) for (let v = 6; v < D - 4; v += 12) box(u, v, 7.1, .3, .05, 8, lightM);
@@ -102,20 +124,36 @@ export class Store {
     // entrances on the front wall: grocery (u≈0.18L) and home & pharmacy (u≈0.78L)
     this.doors = [[L * .18, 0, 'Grocery & Pickup'], [L * .78, 0, 'Home & Pharmacy']];
     const walls = [];
-    const frontSegs = [[0, L * .18 - 3], [L * .18 + 3, L * .78 - 3], [L * .78 + 3, L]];
-    for (const [a1, b1] of frontSegs) { const [ax, az] = G(a1, 0), [bx, bz] = G(b1, 0); walls.push([ax, az, bx, bz]); }
-    for (const [a1, b1, a2, b2] of [[L, 0, L, D], [L, D, 0, D], [0, D, 0, 0]]) { const [ax, az] = G(a1, b1), [bx, bz] = G(a2, b2); walls.push([ax, az, bx, bz]); }
+    // exterior walls on the footprint, split where an entrance meets them (3.6 m openings)
+    const doorPts = this.doors.map(([u]) => G(u, 0));
+    const extM = M('#cdcac1', { side: THREE.DoubleSide }), band = M('#8e9399', { side: THREE.DoubleSide });
+    const wallSeg = (ax, az, bx, bz) => { const Lw = Math.hypot(bx - ax, bz - az); if (Lw < .05) return; walls.push([ax, az, bx, bz]);
+      for (const [hh, yy, m] of [[H + .9, (H + .9) / 2, extM]]) { const o = new THREE.Mesh(new THREE.PlaneGeometry(Lw, hh), m); o.position.set((ax + bx) / 2, y0 + yy, (az + bz) / 2); o.rotation.y = -Math.atan2(bz - az, bx - ax); grp.add(o); }
+      const o2 = new THREE.Mesh(new THREE.BoxGeometry(Lw, .9, .25), band); o2.position.set((ax + bx) / 2, y0 + H + .45, (az + bz) / 2); o2.rotation.y = -Math.atan2(bz - az, bx - ax); grp.add(o2); };
+    for (let q = 0; q < P.length; q += 2) {
+      const ax = P[q], az = P[q + 1], bx = P[(q + 2) % P.length], bz = P[(q + 3) % P.length]; const Lw = Math.hypot(bx - ax, bz - az);
+      const cuts = [];
+      for (const [dx, dz] of doorPts) { const [d, t] = distSeg(dx, dz, ax, az, bx, bz); if (d < 9 && t > 0 && t < 1) cuts.push(t); }
+      if (!cuts.length) { wallSeg(ax, az, bx, bz); continue; }
+      cuts.sort(); let t0 = 0;
+      for (const t of cuts) { const h = 1.8 / Lw; wallSeg(ax + (bx - ax) * t0, az + (bz - az) * t0, ax + (bx - ax) * (t - h), az + (bz - az) * (t - h)); t0 = t + h;
+        // entrance portal: canopy + blue fascia over the opening
+        const cx = ax + (bx - ax) * t, cz = az + (bz - az) * t; const nx = (bz - az) / Lw, nz = -(bx - ax) / Lw;
+        const can = new THREE.Mesh(new THREE.BoxGeometry(7, .5, 3.2), M('#9aa3ab')); can.position.set(cx + nx * 1.6 * this.outSign(cx, cz, nx, nz), y0 + 4.2, cz + nz * 1.6 * this.outSign(cx, cz, nx, nz)); can.rotation.y = -Math.atan2(bz - az, bx - ax); grp.add(can);
+        const fas = new THREE.Mesh(new THREE.BoxGeometry(7.4, 1.6, .3), blue); fas.position.copy(can.position); fas.position.y = y0 + 5.2; fas.rotation.y = can.rotation.y; grp.add(fas); }
+      wallSeg(ax + (bx - ax) * t0, az + (bz - az) * t0, bx, bz);
+    }
     // signs above the doors (outside + inside)
     for (const [u, v, txt] of this.doors) {
       const tex = canvasTex(512, 96, (g) => { g.fillStyle = '#0b4fa8'; g.fillRect(0, 0, 512, 96); g.fillStyle = '#fff'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 256, 50); });
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.1), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })); const [x, z] = G(u, -.08); m.position.set(x, y0 + 5.2, z); m.rotation.y = out; grp.add(m);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.1), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })); const [x, z] = G(u, frontV(u) - .45); m.position.set(x, y0 + 6.1, z); m.rotation.y = out; grp.add(m);
       // vestibule doors (slide open when near)
       const dl = box(u - .75, -.05, 1.15, 1.5, 2.3, .06, glass), dr = box(u + .75, -.05, 1.15, 1.5, 2.3, .06, glass);
       (this.slides = this.slides || []).push([dl, dr, u]);
     }
     // the big front sign
     { const tex = canvasTex(1024, 192, (g) => { g.fillStyle = '#0b4fa8'; g.font = 'bold 150px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('Walmart', 470, 100); g.fillStyle = '#ffc220'; for (let k = 0; k < 6; k++) { g.save(); g.translate(890, 96); g.rotate(k * Math.PI / 3); g.fillRect(-9, -70, 18, 46); g.restore(); } });
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(22, 4.1), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); const [x, z] = G(L * .48, -.12); m.position.set(x, y0 + 7.4, z); m.rotation.y = out; grp.add(m); }
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(22, 4.1), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); const [x, z] = G(L * .48, frontV(L * .48) - .2); m.position.set(x, y0 + 6.6, z); m.rotation.y = out; grp.add(m); }
     // ---- departments ----
     const locs = new Map(); // dept -> list of pick locations {u,v,face,aisle,sec}
     const addLoc = (dept, u, v, face, aisle) => { if (!locs.has(dept)) locs.set(dept, []); locs.get(dept).push({ u, v, face, aisle, sec: locs.get(dept).length % 12 + 1 }); };
@@ -155,7 +193,7 @@ export class Store {
     const fg = new THREE.BoxGeometry(.32, .3, .22); const im = new THREE.InstancedMesh(fg, prod, facings.length); const col = new THREE.Color(); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), sc = new THREE.Vector3(), p = new THREE.Vector3();
     const hues = CAT.map(x => x[4]);
     facings.forEach(([u, v, y, h, big], i) => { const [x, z] = G(u, v); p.set(x, y0 + y, z); sc.set(big ? 2 : 1, big ? .6 : .9 + h * .4, big ? 2 : 3.2); im.setMatrixAt(i, m4.compose(p, q, sc)); col.set(hues[(h * hues.length) | 0]); im.setColorAt(i, col); });
-    grp.add(im);
+    grp.add(im); this.inner = [im, ...this.lamps];
     // ---- the OGP room: front corner at the grocery end ----
     const ogU = 2, ogV = 2, ogW = Math.min(16, gW * .3), ogD = 9;
     box(ogU + ogW / 2, ogV + ogD + .05, 1.5, ogW, 3, .12, M('#dfe2e4'));
@@ -172,9 +210,9 @@ export class Store {
     for (let kq = 0; kq < 3; kq++) box(ogU + 1.2 + kq * .9, ogV + 6.5, .55, .8, 1.1, 1.4, M('#3b5f9e'));
     // pickup spots outside (orange signs), on the lot in front of the grocery end
     this.spots = [];
-    for (let kq = 0; kq < 8; kq++) { const u = 3 + kq * 3.0, v = -16; const [x, z] = G(u, v); const post = new THREE.Mesh(new THREE.BoxGeometry(.08, 2.2, .08), M('#999')); post.position.set(x, this.world.height(x, z) + 1.1, z); grp.add(post); const t2 = canvasTex(128, 128, (g) => { g.fillStyle = '#f47321'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#fff'; g.font = 'bold 30px Arial'; g.textAlign = 'center'; g.fillText('Pickup', 64, 50); g.font = 'bold 50px Arial'; g.fillText(String(kq + 1), 64, 104); }); const sg = new THREE.Mesh(new THREE.PlaneGeometry(.6, .6), new THREE.MeshBasicMaterial({ map: t2, side: THREE.DoubleSide })); sg.position.set(x, this.world.height(x, z) + 2.0, z); sg.rotation.y = out; grp.add(sg); this.spots.push([u, v + 3]); }
+    for (let kq = 0; kq < 8; kq++) { const u = 3 + kq * 3.0, v = frontV(3 + kq * 3.0) - 16; const [x, z] = G(u, v); const post = new THREE.Mesh(new THREE.BoxGeometry(.08, 2.2, .08), M('#999')); post.position.set(x, this.world.height(x, z) + 1.1, z); grp.add(post); const t2 = canvasTex(128, 128, (g) => { g.fillStyle = '#f47321'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#fff'; g.font = 'bold 30px Arial'; g.textAlign = 'center'; g.fillText('Pickup', 64, 50); g.font = 'bold 50px Arial'; g.fillText(String(kq + 1), 64, 104); }); const sg = new THREE.Mesh(new THREE.PlaneGeometry(.6, .6), new THREE.MeshBasicMaterial({ map: t2, side: THREE.DoubleSide })); sg.position.set(x, this.world.height(x, z) + 2.0, z); sg.rotation.y = out; grp.add(sg); this.spots.push([u, v + 3]); }
     // bike rack by the grocery door (to chain up the scooter)
-    { const [x, z] = G(L * .18 - 6, -3.5); const rack = new THREE.Mesh(new THREE.BoxGeometry(2.4, .8, .1), M('#8b9094')); rack.position.set(x, this.world.height(x, z) + .4, z); rack.rotation.y = yaw; grp.add(rack); this.rack = [x, z]; }
+    { const [x, z] = G(L * .18 - 6, frontV(L * .18 - 6) - 3.5); const rack = new THREE.Mesh(new THREE.BoxGeometry(2.4, .8, .1), M('#8b9094')); rack.position.set(x, this.world.height(x, z) + .4, z); rack.rotation.y = yaw; grp.add(rack); this.rack = [x, z]; }
     // building becomes walkable inside
     const cols = this.world.colliders.get(this.world.key(this.cx, this.cz)) || [];
     for (const cc of cols) if (cc.b && cc.b.n && /walmart/i.test(cc.b.n)) cc.enterable = true;
@@ -195,6 +233,7 @@ export class Store {
     }
     return out;
   }
+  outSign(x, z, nx, nz) { return pointInPoly(x + nx * 2, z + nz * 2, this.P) ? -1 : 1; } // which side of a wall is outside
   local(x, z) { // world -> grocery-frame (u, v)
     const [ox, oz] = this.G(0, 0), [ux, uz] = this.G(1, 0), [vx, vz] = this.G(0, 1);
     const dx = x - ox, dz = z - oz; return [dx * (ux - ox) + dz * (uz - oz), dx * (vx - ox) + dz * (vz - oz)];
@@ -204,7 +243,7 @@ export class Store {
   update(dt, hour) {
     if (!this.built) { this.tryBuild(); return; }
     const p = this.player; const near = Math.hypot(p.x - this.cx, p.z - this.cz) < 200;
-    this.g.visible = near || this.inside(p.x, p.z);
+    for (const o of this.inner) o.visible = near; // shelves full of product and the ceiling lights only matter up close
     if (!near) { if (p.walls === this.walls) p.walls = []; return; }
     if (!p.walls.length || p.walls === this.walls) p.walls = this.walls;
     const ins = this.inside(p.x, p.z);

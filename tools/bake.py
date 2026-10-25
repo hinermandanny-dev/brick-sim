@@ -151,6 +151,7 @@ for n in nodes:
     elif tg.get("amenity") == "fuel": k = None
     elif tg.get("natural") == "tree": k = "tree"
     elif tg.get("man_made") == "flagpole": k = "flag"
+    elif tg.get("entrance") or tg.get("amenity") == "loading_dock": k = "door_service" if (tg.get("entrance") in ("service", "emergency", "exit") or tg.get("amenity") == "loading_dock") else "door_main"
     elif tg.get("barrier") in ("bollard",): k = "bollard"
     elif tg.get("amenity") == "post_box": k = "postbox"
     elif tg.get("traffic_sign"): k = None

@@ -386,7 +386,7 @@ export class World {
       const big = (maxx - minx) * (maxz - minz) > 6000;
       const kindCode = res || small ? (r() < .45 ? 1.3 : 1) : big ? 3 : ['school', 'office', 'apartments', 'hospital', 'university', 'college', 'hotel', 'public', 'civic'].includes(b.k) ? 4 : 2;
       const wallCol = new THREE.Color(res ? SIDING[(r() * SIDING.length) | 0] : big ? '#cfc8b8' : b.k === 'church' ? BRICKS[(r() * 4) | 0] : (r() < .35 ? BRICKS[(r() * 4) | 0] : ['#d8d0bf', '#c7bfae', '#e2dccf', '#b9b2a4', '#a8a091'][(r() * 5) | 0]));
-      if (b.n && /walmart/i.test(b.n)) wallCol.set('#c9c6bd');
+      if (b.n && /walmart/i.test(b.n) && b.h > 4) { cols.push({ P, minx, maxx, minz, maxz, h: b.h, top: b.h + 3, b, store: true }); continue; } // the store draws Walmart itself (with real entrances)
       const found = res ? 0.45 : 0.15, base = ymin - 0.3, eave = ymin + found + b.h;
       let u = 0;
       for (let q = 0; q < P.length; q += 2) {
