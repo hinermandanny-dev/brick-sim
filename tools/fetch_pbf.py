@@ -68,6 +68,8 @@ class H(osmium.SimpleHandler):
             g = [{"lat": n.lat, "lon": n.lon} for n in o]
             if any(inb(p["lat"], p["lon"]) for p in g) or True: mem.append({"type": "way", "role": "outer", "geometry": g})
             for i in a.inner_rings(o): mem.append({"type": "way", "role": "inner", "geometry": [{"lat": n.lat, "lon": n.lon} for n in i]})
+        if not mem or not any(m['geometry'] for m in mem): return
+        mem = [m for m in mem if m['geometry']]
         # keep only multipolygons that touch the box
         if not any(inb(p["lat"], p["lon"]) for m in mem for p in m["geometry"][:: max(1, len(m["geometry"]) // 50)]):
             lat0 = min(p["lat"] for m in mem for p in m["geometry"]); lat1 = max(p["lat"] for m in mem for p in m["geometry"])
