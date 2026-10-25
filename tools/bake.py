@@ -20,7 +20,12 @@ X0, Z0 = P(bb["N"], bb["W"]); X1, Z1 = P(bb["S"], bb["E"])
 def D(v): return int(round(v * 10))
 def tkey(x, z): return (int(math.floor(x / TS)), int(math.floor(z / TS)))
 tiles = {}
+TI0, TJ0 = int(math.floor(X0 / TS)), int(math.floor(Z0 / TS)); TI1, TJ1 = int(math.floor(X1 / TS)), int(math.floor(Z1 / TS))
+class _Sink(dict):
+    def __getitem__(self, k): return []
+_sink = {"roads": [], "foot": [], "bld": [], "areas": [], "props": [], "trees": [], "lines": [], "labels": []}
 def T(k):
+    if not (TI0 <= k[0] <= TI1 and TJ0 <= k[1] <= TJ1): return {kk: [] for kk in _sink}
     if k not in tiles:
         tiles[k] = {"roads": [], "foot": [], "bld": [], "areas": [], "props": [], "trees": [], "lines": [], "labels": []}
     return tiles[k]
@@ -313,11 +318,15 @@ def clip(poly, x0, z0, x1, z1):
     p = cl(p, lambda q: q[1] >= z0, lambda a, b: iz(a, b, z0)) if p else p
     p = cl(p, lambda q: q[1] <= z1, lambda a, b: iz(a, b, z1)) if p else p
     return p
-water_polys = []; area_polys = []
+water_polys = []; area_polys = []; area_labels = []
 for el in L("areas") + L("rels"):
     tg = el.get("tags", {}); kd = akind(tg)
     if not kd: continue
     outs, ins = rings_of(el)
+    nm = tg.get("name")
+    if nm and outs and len(outs[0]) >= 3 and kd not in ("res", "com", "ind"):
+        r0 = outs[0]; cx_ = sum(p[0] for p in r0) / len(r0); cz_ = sum(p[1] for p in r0) / len(r0)
+        area_labels.append([nm, D(cx_), D(cz_), tg.get("amenity") or tg.get("leisure") or tg.get("natural") or tg.get("landuse") or kd])
     for r in outs:
         if len(r) < 3: continue
         if kd == "water": water_polys.append(r)
@@ -326,14 +335,16 @@ print("areas", len(area_polys))
 for kd, r, ins in area_polys:
     xs = [p[0] for p in r]; zs = [p[1] for p in r]
     i0, j0 = tkey(min(xs), min(zs)); i1, j1 = tkey(max(xs), max(zs))
+    big = (i0 != i1 or j0 != j1)
+    i0 = max(i0, TI0); j0 = max(j0, TJ0); i1 = min(i1, TI1); j1 = min(j1, TJ1)   # never build tiles outside the map box
     for i in range(i0, i1 + 1):
         for j in range(j0, j1 + 1):
             x0, z0 = i * TS, j * TS
-            c = clip(r, x0, z0, x0 + TS, z0 + TS) if (i0 != i1 or j0 != j1) else r
+            c = clip(r, x0, z0, x0 + TS, z0 + TS) if big else r
             if len(c) < 3 or abs(area(c)) < 1: continue
             holes = []
             for hr in ins:
-                hc = clip(hr, x0, z0, x0 + TS, z0 + TS) if (i0 != i1 or j0 != j1) else hr
+                hc = clip(hr, x0, z0, x0 + TS, z0 + TS) if big else hr
                 if len(hc) >= 3: holes.append([v for q in hc for v in (D(q[0]), D(q[1]))])
             T((i, j))["areas"].append({"k": kd, "o": ORDER.get(kd, 0), "p": [v for q in c for v in (D(q[0]), D(q[1]))], "h": holes})
 
@@ -479,6 +490,8 @@ for (i, j), t in tiles.items():
             cx = sum(b["p"][0::2]) / len(b["p"]) * 2 / 10; cz = sum(b["p"][1::2]) / len(b["p"]) * 2 / 10
             pois.append([b["n"], D(cx), D(cz), b["k"]])
     for l in t["labels"]: pois.append(l)
+for l in area_labels:
+    if X0 <= l[1] / 10 <= X1 and Z0 <= l[2] / 10 <= Z1: pois.append(l)
 json.dump({"lat0": LAT0, "lon0": LON0, "kx": KX, "kz": KZ, "ts": TS, "ds": DS, "gx0": gx0, "gz0": gz0, "gx1": gx1, "gz1": gz1,
            "tiles": sorted([f"{i}_{j}" for (i, j) in tiles]), "walmart": walmart, "pois": pois, "demsrc": dm.get("src")},
           open(os.path.join(OUT, "meta.json"), "w"), separators=(",", ":"))
