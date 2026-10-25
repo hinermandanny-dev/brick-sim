@@ -436,7 +436,7 @@ for k, t in list(tiles.items()):
     for ei in t["roads"]:
         e = edges[ei]; w = ways[e[2]]["w"]
         pts = [((e[3][i] / 10 - x0), (e[3][i + 1] / 10 - z0)) for i in range(0, len(e[3]), 2)]
-        d.line(pts, fill=255, width=int(w + 5))
+        d.line(pts, fill=255, width=int(w + (14 if ways[e[2]].get("sv") == "parking_aisle" else 5)))  # no trees in the stall rows the client paints
     for f in t["foot"]:
         pts = [((f["p"][i] / 10 - x0), (f["p"][i + 1] / 10 - z0)) for i in range(0, len(f["p"]), 2)]
         d.line(pts, fill=255, width=3)

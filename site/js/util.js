@@ -37,7 +37,7 @@ export function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); draw(g, w, h);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = opts.clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
-  t.anisotropy = opts.aniso ?? 8; if (opts.nearest) { t.magFilter = THREE.NearestFilter; }
+  t.anisotropy = opts.aniso ?? 4; if (opts.nearest) { t.magFilter = THREE.NearestFilter; }
   return t;
 }
 export function noiseFill(g, w, h, base, amp, n = 4000, sz = 2) {

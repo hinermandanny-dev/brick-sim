@@ -132,11 +132,35 @@ const AREA = {
   isle: '#7f8c55', parking: '#565658', asphalt: '#555557', water: '#3d6a84', pool: '#4fa3c7', pier: '#8a7860',
 };
 
+// ground texture: one pooled canvas per tile at a fixed size, plus a shared world-space detail map in the shader so the
+// ground stays crisp up close without a bigger per-tile texture (late/low-res ground was part of the 25 Oct "corrupted map")
+const GROUND_R = 768;
+let DETAIL = null;
+function groundMat(tex) {
+  if (!DETAIL) {
+    DETAIL = canvasTex(256, 256, (g, w, h) => {
+      g.fillStyle = '#808080'; g.fillRect(0, 0, w, h); const r = rng(77);
+      for (let i = 0; i < 6000; i++) { const v = 100 + r() * 56; g.fillStyle = `rgba(${v},${v},${v},.5)`; g.fillRect(r() * w, r() * h, 1 + r() * 2, 1 + r() * 2); }
+    }, { aniso: 4 });
+    DETAIL.colorSpace = THREE.NoColorSpace;
+  }
+  const m = new THREE.MeshLambertMaterial({ map: tex });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.tDetail = { value: DETAIL };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vGW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGW = (modelMatrix * vec4(position, 1.)).xz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tDetail; varying vec2 vGW;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n{ float d = texture2D(tDetail, vGW / 3.).r * .6 + texture2D(tDetail, vGW / 11.).r * .4; diffuseColor.rgb *= .72 + d * .56; }');
+  };
+  m.customProgramCacheKey = () => 'ground1';
+  return m;
+}
+
 export class World {
   constructor(scene, meta, roads, base = 'data/') {
     initMats();
     this.scene = scene; this.meta = meta; this.roads = roads; this.base = base;
-    this.tiles = new Map(); this.pending = new Set(); this.have = new Set(meta.tiles);
+    this.tiles = new Map(); this.pending = new Set(); this.have = new Set(meta.tiles); this.fails = new Map();
+    this.texPool = []; // ground canvases+textures are recycled (same size): no GPU re-allocation churn while moving
     this.group = new THREE.Group(); scene.add(this.group);
     this.colliders = new Map(); // tile -> [{poly, minx,maxx,minz,maxz, h}]
     this.drives = new Map();    // tile -> driveway records (curb cuts, parked cars)
@@ -181,17 +205,24 @@ export class World {
       for (let q = 0; q < DN * DN; q++) dem[q] = (bin.charCodeAt(2 * q) | (bin.charCodeAt(2 * q + 1) << 8)) << 16 >> 16;
       const [i, j] = k.split('_').map(Number);
       const t = { k, i, j, d, dem, g: new THREE.Group() };
+      this.build(t);                       // build fully first: a tile is never visible half-made
+      if (this.renderer) for (const tx of t.texs || []) this.renderer.initTexture(tx); // upload now, not on first sight
       this.tiles.set(k, t);
-      this.build(t);
       this.group.add(t.g);
+      this.fails.delete(k);
       for (const f of this.listeners) f('load', t);
-    } catch (e) { console.warn('tile', k, e); this.have.delete(k); }
+    } catch (e) { // a failed fetch or parse used to delete the tile for good (a permanent hole in the map): retry with backoff
+      console.warn('tile', k, e); const n = (this.fails.get(k) || 0) + 1; this.fails.set(k, n);
+      this.tiles.delete(k); this.colliders.delete(k); this.drives.delete(k);
+      if (n < 6) { this.have.delete(k); setTimeout(() => this.have.add(k), 1000 * 2 ** n); } else this.have.delete(k);
+    }
     this.pending.delete(k);
   }
   drop(k) {
     const t = this.tiles.get(k); if (!t) return;
     for (const f of this.listeners) f('drop', t);
     this.group.remove(t.g);
+    if (t.ground) { this.texPool.push(t.ground.material.map); t.ground.material.map = null; }
     t.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material._own) { o.material.map?.dispose(); o.material.dispose(); } });
     this.tiles.delete(k); this.colliders.delete(k); this.drives.delete(k);
   }
@@ -222,14 +253,17 @@ export class World {
       pos.setXYZ(q, x0 + lx, t.dem[iz * DN + ix] / 10, z0 + lz);
     }
     g.computeVertexNormals();
-    const R = 768;
-    const tex = canvasTex(R, R, (c) => {
+    const R = GROUND_R;
+    const tex = this.texPool.pop() || canvasTex(R, R, () => {}, { clamp: true, aniso: 4 });
+    { const c = tex.image.getContext('2d');
       const s = R / TS;
       c.fillStyle = '#84a056'; c.fillRect(0, 0, R, R);
       const r = rng(t.i * 7919 + t.j);
       for (let q = 0; q < 9000; q++) { const v = r(); c.fillStyle = v < .5 ? `rgba(40,60,10,${r() * .12})` : `rgba(200,210,120,${r() * .1})`; const sz = 1 + r() * 3; c.fillRect(r() * R, r() * R, sz, sz); }
       const areas = [...t.d.areas].sort((a, b) => a.o - b.o);
+      let paved = false;
       for (const a of areas) {
+        if (!paved && a.o > 0) { paved = true; this.paintPaved(c, t, x0, z0, s); }
         c.beginPath();
         const ring = (p) => { for (let q = 0; q < p.length; q += 2) { const X = (p[q] / 10 - x0) * s, Y = (p[q + 1] / 10 - z0) * s; q ? c.lineTo(X, Y) : c.moveTo(X, Y); } c.closePath(); };
         ring(a.p); for (const h of a.h) ring(h);
@@ -240,13 +274,45 @@ export class World {
         if (a.k === 'pitch') { c.save(); c.clip('evenodd'); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.2; c.stroke(); c.restore(); }
         if (a.k === 'cemetery') { c.save(); c.clip('evenodd'); c.fillStyle = '#9a978f'; for (let q = 0; q < 700; q++) c.fillRect(r() * R, r() * R, 1.5, 1); c.restore(); }
       }
-    }, { clamp: true });
-    const m = new THREE.MeshLambertMaterial({ map: tex }); m._own = true;
+      if (!paved) this.paintPaved(c, t, x0, z0, s);
+    }
+    tex.needsUpdate = true; (t.texs || (t.texs = [])).push(tex);
+    const m = groundMat(tex); m._own = true;
     const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; t.g.add(mesh); t.ground = mesh;
     if (t.d.water) {
       const w = new THREE.Mesh(new THREE.PlaneGeometry(TS, TS).rotateX(-Math.PI / 2), MAT.water);
       w.position.set(x0 + TS / 2, 0.0, z0 + TS / 2); t.g.add(w);
     }
+  }
+  // Paved lot surfaces that OSM implies but rarely maps as a polygon: stall rows either side of every parking aisle,
+  // drive-throughs, lot lanes beside big buildings, and the concrete apron in front of big stores (Dan, 25 Oct: "a lot
+  // of grass by the Walmart that isn't there"). Explicit grass / park / water areas are painted after this and win.
+  paintPaved(c, t, x0, z0, s) {
+    const R = this.roads, big = [];
+    for (const b of t.d.bld) { if (b.k === 'res' || b.k === 'small' || b.p.length < 6) continue; const P = []; for (let q = 0; q < b.p.length; q += 2) P.push(b.p[q] / 10, b.p[q + 1] / 10); const A = Math.abs(polyArea(P)); if (A > 1500) { let cx = 0, cz = 0; for (let q = 0; q < P.length; q += 2) { cx += P[q]; cz += P[q + 1]; } big.push({ P, A, cx: cx / (P.length / 2), cz: cz / (P.length / 2), r: Math.sqrt(A) }); } }
+    const X = (x) => (x - x0) * s, Z = (z) => (z - z0) * s;
+    const path = (pts) => { c.beginPath(); for (let q = 0; q < pts.length; q += 2) q ? c.lineTo(X(pts[q]), Z(pts[q + 1])) : c.moveTo(X(pts[q]), Z(pts[q + 1])); };
+    c.save(); c.lineJoin = c.lineCap = 'round';
+    // aprons: 5 m of concrete walk around big stores / schools / offices
+    c.strokeStyle = '#a6a297'; for (const b of big) { path(b.P); c.closePath(); c.lineWidth = 10 * s; c.stroke(); }
+    const aisles = [];
+    for (const ei of t.d.roads) {
+      const e = R.edges[ei], w = e.way; if (w.t !== 'service') continue;
+      let extra = 0;
+      if (w.sv === 'parking_aisle') extra = 11.5; // 5.5 m stalls each side + a little
+      else if (w.sv === 'drive-through') extra = 2;
+      else if (!w.sv) { const mx = e.pts[(e.pts.length >> 2) * 2], mz = e.pts[(e.pts.length >> 2) * 2 + 1]; if (big.some(b => Math.hypot(b.cx - mx, b.cz - mz) < b.r + 90)) extra = 7; }
+      if (!extra) continue;
+      c.strokeStyle = AREA.parking; c.lineWidth = (w.w + extra) * s; path(e.pts); c.stroke();
+      if (w.sv === 'parking_aisle') aisles.push(e);
+    }
+    // stall lines: ticks every 2.75 m on both sides of each aisle
+    c.strokeStyle = 'rgba(240,238,228,.8)'; c.lineWidth = Math.max(1, .12 * s); c.lineCap = 'butt'; c.beginPath();
+    for (const e of aisles) {
+      const hw = e.way.w / 2;
+      for (let d = 1.4; d < e.len - 1.4; d += 2.75) { const p = R.at(e, d, 0); const nx = -p.hz, nz = p.hx; for (const sd of [1, -1]) { c.moveTo(X(p.x + nx * sd * hw), Z(p.z + nz * sd * hw)); c.lineTo(X(p.x + nx * sd * (hw + 5.4)), Z(p.z + nz * sd * (hw + 5.4))); } }
+    }
+    c.stroke(); c.restore();
   }
   roadY(x, z) { return this.height(x, z) + 0.06; }
   edgeY(e, x, z, s) {
@@ -300,7 +366,7 @@ export class World {
         const ctrl = (nd.f & (1 | 2 | 32 | 64)) || (nd.cls >= e.cls + 2 && e.cls >= 3);
         if (!ctrl) continue;
         const lanes = R.lanes(e, dir); if (!lanes) continue;
-        const p = R.at(e, sEnd, 0); const y = this.edgeY(e, p.x, p.z, sEnd) + 0.012;
+        const p = R.at(e, sEnd, 0); const y = this.edgeY(e, p.x, p.z, sEnd) + 0.018;
         const nx = -p.hz, nz = p.hx; const lw = laneGeom(way).lw;
         const sgn = dir === 0 ? 1 : -1; // lanes for a->b are on the right (+normal)
         const back = dir === 0 ? -1.2 : 1.2;
@@ -335,9 +401,9 @@ export class World {
         pts.push([p.x + nx * hw, p.z + nz * hw], [p.x - nx * hw, p.z - nz * hw]);
       }
       const hull = convexHull(pts); if (hull.length < 3) continue;
-      const y = this.height(nd.x, nd.z) + 0.065; const W = new THREE.Color(1, 1, 1);
+      const y = this.height(nd.x, nd.z) + 0.072; const W = new THREE.Color(1, 1, 1);
       const c = isect.vert(nd.x, y, nd.z, 0, 1, 0, W, nd.x / 12, nd.z / 12);
-      const ids = hull.map(([x, z]) => isect.vert(x, this.height(x, z) + 0.065, z, 0, 1, 0, W, x / 12, z / 12));
+      const ids = hull.map(([x, z]) => isect.vert(x, this.height(x, z) + 0.072, z, 0, 1, 0, W, x / 12, z / 12));
       for (let q = 0; q < ids.length; q++) isect.triTo(c, ids[(q + 1) % ids.length], ids[q], 0, 1, 0);
     }
     if (isect.count) { const m = new THREE.Mesh(isect.build(), MAT.isect); m.receiveShadow = true; t.g.add(m); }

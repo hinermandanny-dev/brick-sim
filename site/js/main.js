@@ -35,7 +35,7 @@ class Game {
     const local = this.region.home ? await j('local/home.json').catch(() => null) : null;
     // renderer
     const canvas = $('c');
-    const R = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    const R = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: !new URLSearchParams(location.search).has('nolog') }); // log depth: road/junction/ground layers mm apart no longer z-fight at range (the 25 Oct flicker)
     const Q = new URLSearchParams(location.search); this.low = Q.has('low');
     R.setPixelRatio(this.low ? .5 : Math.min(devicePixelRatio, 1.5)); R.setSize(innerWidth, innerHeight); R.shadowMap.enabled = !this.low; R.shadowMap.type = THREE.PCFSoftShadowMap;
     R.outputColorSpace = THREE.SRGBColorSpace; R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.05;
@@ -43,7 +43,7 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, .05, 3500);
     addEventListener('resize', () => { R.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); });
     this.sky = new Sky(this.scene, R);
-    this.world = new World(this.scene, this.meta, this.roads, B);
+    this.world = new World(this.scene, this.meta, this.roads, B); this.world.renderer = R;
     this.world.dem = new Int16Array(await (await fetch(B + 'dem.bin')).arrayBuffer());
     this.traffic = new Traffic(this.scene, this.world, this.roads);
     this.player = new Player(this.scene, this.world, this.roads, this.traffic, this.camera, (arrive && arrive.outfit) || store.get('outfit', OUTFIT_DEFAULT));

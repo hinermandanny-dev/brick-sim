@@ -1,0 +1,33 @@
+# Real ground cover: NJ 2020 orthophotos resampled onto the region grid (tools/fetch_ortho.py), added to the data branch.
+# The site workflow then bakes it into per-tile ground classes. Free: NJ Office of GIS cache tiles + GitHub-hosted runner.
+name: ortho
+on:
+  workflow_dispatch:
+    inputs:
+      region: { description: 'region (empty = brick, branch data)', required: false, default: '' }
+      preview: { description: 'JSON [[name,x,z],...] local-metre crops to save under preview/', required: false, default: '[["walmart",-1621,-400],["centre",0,0]]' }
+permissions:
+  contents: write
+jobs:
+  ortho:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: data branch
+        run: |
+          B=data; if [ -n "${{ inputs.region }}" ]; then B="data-${{ inputs.region }}"; fi
+          echo "B=$B" >> $GITHUB_ENV
+          git fetch -q --depth 1 origin "$B" && git worktree add -q raw FETCH_HEAD
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install requests numpy pillow
+      - run: set -o pipefail && python tools/fetch_ortho.py raw 2>&1 | tee raw/ortho-log.txt
+        shell: bash
+        env: { ORTHO_PREVIEW: '${{ inputs.preview }}' }
+      - name: commit to the data branch
+        if: always()
+        run: |
+          cd raw
+          git config user.name "brick-sim ortho"; git config user.email "actions@users.noreply.github.com"
+          git add -A && git commit -qm "ortho ground cover $(date -u +%FT%TZ)" && git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "HEAD:$B"
