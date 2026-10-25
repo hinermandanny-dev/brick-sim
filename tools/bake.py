@@ -433,6 +433,18 @@ except Exception as ex:
     print("addr skipped", ex)
 json.dump(addr, open(os.path.join(OUT, "addr.json"), "w"), separators=(",", ":"))
 print("addresses", len(addr))
+# ---------------- bus routes: tag the ways NJ Transit buses run on ----------------
+try:
+    wid = {w["id"]: i for i, w in enumerate(ways)}; nbus = 0
+    for r in L("rels"):
+        tg = r.get("tags", {})
+        if tg.get("type") == "route" and tg.get("route") == "bus":
+            ref = tg.get("ref") or tg.get("name", "bus")
+            for m in r.get("members", []):
+                if m.get("type") == "way" and m.get("ref") in wid: ways[wid[m["ref"]]]["bus"] = ref[:12]; nbus += 1
+    print("bus route ways", nbus)
+except Exception as ex:
+    print("bus routes skipped", ex)
 # ---------------- graph + meta ----------------
 json.dump({"nodes": gn, "edges": [e[:4] for e in edges], "ways": ways, "restr": restr}, open(os.path.join(OUT, "roads.json"), "w"), separators=(",", ":"))
 pois = []

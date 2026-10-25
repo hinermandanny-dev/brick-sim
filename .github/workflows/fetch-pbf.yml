@@ -1,0 +1,31 @@
+# Same raw data as fetch.yml, but from the Geofabrik New Jersey extract (one download, no Overpass rate limits).
+name: fetch-pbf
+on:
+  workflow_dispatch:
+    inputs:
+      bbox: { description: 'S W N E (empty = Brick Township)', required: false, default: '' }
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install osmium requests numpy pillow tifffile
+      - run: curl -sSL -o nj.osm.pbf https://download.geofabrik.de/north-america/us/new-jersey-latest.osm.pbf && ls -la nj.osm.pbf
+      - run: python tools/fetch_pbf.py nj.osm.pbf out ${{ inputs.bbox }}
+      - run: python tools/fetch.py out --dem-only
+        continue-on-error: true
+      - name: commit to data branch
+        if: always()
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "brick-sim fetch"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -qm "raw data (geofabrik) $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data

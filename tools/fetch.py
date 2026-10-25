@@ -27,46 +27,51 @@ def save(name, j):
     with gzip.open(os.path.join(OUT, name + ".json.gz"), "wt", encoding="utf-8") as f:
         json.dump(j, f, separators=(",", ":"))
 
+DEM_ONLY = "--dem-only" in sys.argv
+if DEM_ONLY:
+    bb_ = json.load(open(os.path.join(OUT, "bbox.json"))); S, N, W, E = bb_["S"], bb_["N"], bb_["W"], bb_["E"]
 # 1. boundary -> bbox
-b = op('[out:json][timeout:180];rel["boundary"="administrative"]["admin_level"="8"]["name"~"^Brick( Township)?$"](39.9,-74.3,40.2,-73.9);out geom;', "boundary") or {"elements": []}
-save("boundary", b)
-lats, lons = [], []
-for el in b["elements"]:
-    for m in el.get("members", []):
-        for p in m.get("geometry", []) or []:
-            lats.append(p["lat"]); lons.append(p["lon"])
-if not lats:
-    lats, lons = [39.99, 40.12], [-74.19, -74.03]
-pad = 0.004
-S, N, W, E = min(lats) - pad, max(lats) + pad, min(lons) - pad, max(lons) + pad
-bbox = f"{S:.5f},{W:.5f},{N:.5f},{E:.5f}"
-json.dump({"S": S, "N": N, "W": W, "E": E}, open(os.path.join(OUT, "bbox.json"), "w"))
-print("bbox", bbox, flush=True)
-def quads(n):
-    out = []
-    for a in range(n):
-        for b in range(n):
-            s_ = S + (N - S) * a / n; n_ = S + (N - S) * (a + 1) / n; w_ = W + (E - W) * b / n; e_ = W + (E - W) * (b + 1) / n
-            out.append(f"{s_:.5f},{w_:.5f},{n_:.5f},{e_:.5f}")
-    return out
-Q = {
-  "highways": ('way["highway"];out geom;', 2),
-  "buildings": ('(way["building"];rel["building"];way["building:part"];);out geom;', 3),
-  "areas": ('(way["landuse"];rel["landuse"];way["natural"];rel["natural"];way["leisure"];rel["leisure"];way["amenity"];rel["amenity"];way["waterway"];way["water"];rel["water"];way["man_made"];way["place"];way["area:highway"];way["shop"];way["tourism"];);out geom;', 2),
-  "lines": ('(way["barrier"];way["railway"];way["power"];way["natural"="coastline"];);out geom;', 2),
-  "nodes": ('(node["natural"];node["highway"];node["amenity"];node["shop"];node["barrier"];node["man_made"];node["power"];node["leisure"];node["tourism"];node["entrance"];node["emergency"];node["advertising"];node["traffic_sign"];node["public_transport"];node["railway"];node["place"];node["office"];node["craft"];node["healthcare"];);out body;', 2),
-  "addr": ('(node["addr:housenumber"];way["addr:housenumber"];);out center tags;', 2),
-  "rels": ('(rel["type"="multipolygon"];rel["type"="route"]["route"~"bus|bicycle"];);out geom;', 1),
-  "restr": ('rel["type"="restriction"];out body;', 1),
-}
-for k, (q, n) in Q.items():
-    seen = {}; ok = True
-    for qb in quads(n):
-        j = op(f"[out:json][timeout:300][maxsize:1073741824][bbox:{qb}];" + q, f"{k}[{qb}]")
-        if j is None: ok = False; continue
-        for el in j.get("elements", []): seen[(el["type"], el["id"])] = el
-        time.sleep(4)
-    save(k, {"elements": list(seen.values())}); print(k, "total", len(seen), "complete" if ok else "PARTIAL")
+if not DEM_ONLY:
+    b = op('[out:json][timeout:180];rel["boundary"="administrative"]["admin_level"="8"]["name"~"^Brick( Township)?$"](39.9,-74.3,40.2,-73.9);out geom;', "boundary") or {"elements": []}
+    save("boundary", b)
+    lats, lons = [], []
+    for el in b["elements"]:
+        for m in el.get("members", []):
+            for p in m.get("geometry", []) or []:
+                lats.append(p["lat"]); lons.append(p["lon"])
+    if not lats:
+        lats, lons = [39.99, 40.12], [-74.19, -74.03]
+    pad = 0.004
+    S, N, W, E = min(lats) - pad, max(lats) + pad, min(lons) - pad, max(lons) + pad
+    bbox = f"{S:.5f},{W:.5f},{N:.5f},{E:.5f}"
+    json.dump({"S": S, "N": N, "W": W, "E": E}, open(os.path.join(OUT, "bbox.json"), "w"))
+    print("bbox", bbox, flush=True)
+    def quads(n):
+        out = []
+        for a in range(n):
+            for b in range(n):
+                s_ = S + (N - S) * a / n; n_ = S + (N - S) * (a + 1) / n; w_ = W + (E - W) * b / n; e_ = W + (E - W) * (b + 1) / n
+                out.append(f"{s_:.5f},{w_:.5f},{n_:.5f},{e_:.5f}")
+        return out
+    Q = {
+      "highways": ('way["highway"];out geom;', 2),
+      "buildings": ('(way["building"];rel["building"];way["building:part"];);out geom;', 3),
+      "areas": ('(way["landuse"];rel["landuse"];way["natural"];rel["natural"];way["leisure"];rel["leisure"];way["amenity"];rel["amenity"];way["waterway"];way["water"];rel["water"];way["man_made"];way["place"];way["area:highway"];way["shop"];way["tourism"];);out geom;', 2),
+      "lines": ('(way["barrier"];way["railway"];way["power"];way["natural"="coastline"];);out geom;', 2),
+      "nodes": ('(node["natural"];node["highway"];node["amenity"];node["shop"];node["barrier"];node["man_made"];node["power"];node["leisure"];node["tourism"];node["entrance"];node["emergency"];node["advertising"];node["traffic_sign"];node["public_transport"];node["railway"];node["place"];node["office"];node["craft"];node["healthcare"];);out body;', 2),
+      "addr": ('(node["addr:housenumber"];way["addr:housenumber"];);out center tags;', 2),
+      "rels": ('(rel["type"="multipolygon"];rel["type"="route"]["route"~"bus|bicycle"];);out geom;', 1),
+      "restr": ('rel["type"="restriction"];out body;', 1),
+    }
+    for k, (q, n) in Q.items():
+        seen = {}; ok = True
+        for qb in quads(n):
+            j = op(f"[out:json][timeout:300][maxsize:1073741824][bbox:{qb}];" + q, f"{k}[{qb}]")
+            if j is None: ok = False; continue
+            for el in j.get("elements", []): seen[(el["type"], el["id"])] = el
+            time.sleep(4)
+        save(k, {"elements": list(seen.values())}); print(k, "total", len(seen), "complete" if ok else "PARTIAL")
+
 
 # 2. elevation: USGS 3DEP exportImage (float32 tiff), tiled
 def dem_usgs():
