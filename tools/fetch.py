@@ -121,6 +121,10 @@ except Exception as ex:
     print("usgs failed -> terrarium", type(ex).__name__, flush=True)
     d, t = dem_terrarium(); meta["src"] = "terrarium"; meta["proj"] = "webmercator"; meta.update(t)
 d[~np.isfinite(d)] = 0; d[d < -100] = 0
+# GitHub refuses files over 100 MB: keep the grid at or under 4000 px a side (~3 m here; bake samples at 8 m)
+while max(d.shape) > 4000:
+    h2, w2 = d.shape[0] // 2 * 2, d.shape[1] // 2 * 2
+    d = d[:h2, :w2].reshape(h2 // 2, 2, w2 // 2, 2).mean(axis=(1, 3))
 meta["shape"] = list(d.shape); meta["min"] = float(d.min()); meta["max"] = float(d.max())
 np.save(os.path.join(OUT, "dem.npy"), d.astype(np.float16) if d.max() < 60000 else d)
 json.dump(meta, open(os.path.join(OUT, "dem.json"), "w"))

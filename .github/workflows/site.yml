@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths: [site/**, tools/bake.py, tools/check.mjs, .github/workflows/site.yml]
   workflow_run:
-    workflows: [fetch]
+    workflows: [fetch, fetch-pbf]
     types: [completed]
 permissions:
   contents: read

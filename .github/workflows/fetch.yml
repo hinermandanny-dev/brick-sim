@@ -1,10 +1,7 @@
-# Pulls Brick Township from OpenStreetMap (Overpass) and USGS 3DEP elevation, commits raw data to the `data` branch.
+# (fallback; Overpass 504s on big queries from GitHub runners - use fetch-pbf) Pulls Brick Township from OpenStreetMap (Overpass) and USGS 3DEP elevation, commits raw data to the `data` branch.
 name: fetch
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [tools/fetch.py, .github/workflows/fetch.yml]
 permissions:
   contents: write
 jobs:
