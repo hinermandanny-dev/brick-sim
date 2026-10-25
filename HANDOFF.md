@@ -179,7 +179,7 @@ sidewalk slab joints every 1.5 m (thump + sound), surface vibration and a small 
 `tools/vehicle-check.mjs` measured: ECO 9.2 / D 12.2 / S 18.3 mph (spec 9.3 / 12.4 / 18.6).
 
 **Car (item 7) - the 2005 Pathfinder, done to a first standard:** R51 body (raked glasshouse, tall tail lamps, roof
-rails, flares, 6-spoke 265/70R16), silver by default (`localStorage carColor`; Dan has not said the colour yet).
+rails, flares, 6-spoke 265/70R16), white like the family one (Dan, 25 Oct; `localStorage carColor` overrides).
 Cabin from the driver's seat (eye 1.43 m): dash, binnacle with LIVE tach / speedo / fuel / temp / PRND4321 / odometer,
 4-spoke wheel that turns with your hands on it, A-pillars, hood, seats, headliner, door cards, three mirrors that really
 reflect (render targets, one per frame, round-robin, off in `?low`). `PathfinderDrive`: VQ40DE torque curve, torque

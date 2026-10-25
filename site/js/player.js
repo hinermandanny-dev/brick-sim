@@ -14,7 +14,7 @@ export class Player {
     this.body = new Character(outfit); scene.add(this.body.root);
     this.scooter = makeScooter(); scene.add(this.scooter);
     // the family car: Dan's 2005 Nissan Pathfinder (R51). Drive it with F at the driver's door
-    let cc = '#a9adb1'; try { cc = localStorage.getItem('carColor') || cc; } catch (e) { }
+    let cc = '#eef0ef'; // Dan: the family Pathfinder is white (25 Oct) try { cc = localStorage.getItem('carColor') || cc; } catch (e) { }
     this.car = { x: 0, z: 0, y: 0, yaw: 0, v: 0, steer: 0, dyn: new PathfinderDrive(), mesh: makePathfinder(cc, outfit) }; scene.add(this.car.mesh);
     this.thr = 0; this.brkP = 0; this.bob = 0; this.vib = 0; this.slabD = 0;
     this.driving = false;
